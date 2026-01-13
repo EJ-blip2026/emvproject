@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Admin</title>
+    <style>table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px}</style>
+  </head>
+  <body>
+    <h1>Admin</h1>
+    <p>Enter admin token:</p>
+    <input id="token" type="password" placeholder="admin token" />
+    <button id="load">Load Data</button>
+
+    <h2>API Keys</h2>
+    <table id="keys"><thead><tr><th>key</th><th>user_id</th><th>created_at</th><th>last_rotated</th><th>actions</th></tr></thead><tbody></tbody></table>
+
+    <h2>Subscriptions</h2>
+    <table id="subs"><thead><tr><th>id</th><th>user_id</th><th>plan</th><th>status</th><th>current_period_end</th><th>created_at</th></tr></thead><tbody></tbody></table>
+
+    <script>
+      async function api(path, opts={}){
+        const token = document.getElementById('token').value;
+        opts.headers = opts.headers || {};
+        opts.headers['x-admin-token'] = token;
+        const res = await fetch(path, opts);
+        if(!res.ok) {
+          alert('request failed: ' + res.status);
+          return null;
+        }
+        return res.json();
+      }
+
+      document.getElementById('load').addEventListener('click', async ()=>{
+        const keys = await api('/admin/list-keys');
+        const tbody = document.querySelector('#keys tbody'); tbody.innerHTML='';
+        for(const k of keys||[]){
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${k.key}</td><td>${k.user_id||''}</td><td>${k.created_at||''}</td><td>${k.last_rotated||''}</td><td><button data-key='${k.key}'>Rotate</button></td>`;
+          tbody.appendChild(tr);
+        }
+        document.querySelectorAll('#keys button').forEach(b=>b.addEventListener('click', async e=>{
+          const key = e.target.getAttribute('data-key');
+          const newk = await api('/admin/rotate-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:key})});
+          alert('rotated to: '+ (newk && newk.new_key));
+          document.getElementById('load').click();
+        }));
+
+        const subs = await api('/admin/list-subs');
+        const tbs = document.querySelector('#subs tbody'); tbs.innerHTML='';
+        for(const s of subs||[]){
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${s.id}</td><td>${s.user_id}</td><td>${s.plan}</td><td>${s.status}</td><td>${s.current_period_end||''}</td><td>${s.created_at||''}</td>`;
+          tbs.appendChild(tr);
+        }
+      });
+    </script>
+  </body>
+</html>

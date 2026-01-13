@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haiku API - Pricing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 60px;
+        }
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 60px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 40px 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
+        }
+        .card.featured {
+            border: 3px solid #667eea;
+            transform: scale(1.05);
+        }
+        .card.featured:hover {
+            transform: scale(1.05) translateY(-5px);
+        }
+        .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin-bottom: 15px;
+            width: fit-content;
+        }
+        .plan-name {
+            font-size: 1.8em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .price {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #667eea;
+            margin: 20px 0;
+        }
+        .price span {
+            font-size: 0.5em;
+            color: #999;
+        }
+        .features {
+            list-style: none;
+            margin: 30px 0;
+            flex-grow: 1;
+        }
+        .features li {
+            padding: 12px 0;
+            color: #666;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+        }
+        .features li:before {
+            content: "✓";
+            color: #667eea;
+            font-weight: bold;
+            margin-right: 12px;
+            font-size: 1.2em;
+        }
+        .features li.unavailable {
+            color: #ccc;
+        }
+        .features li.unavailable:before {
+            content: "✗";
+            color: #ccc;
+        }
+        .cta-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            margin-top: 20px;
+        }
+        .cta-button:hover {
+            background: #764ba2;
+        }
+        .cta-button.secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        .cta-button.secondary:hover {
+            background: #f5f5f5;
+        }
+        .faq {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            margin-top: 60px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+        .faq h2 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 1.8em;
+        }
+        .faq-item {
+            margin-bottom: 25px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 25px;
+        }
+        .faq-item h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        .faq-item p {
+            color: #666;
+            line-height: 1.6;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+        .modal-close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .modal-close:hover {
+            color: #000;
+        }
+        .email-input {
+            width: 100%;
+            padding: 12px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+        }
+        .email-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Haiku API Pricing</h1>
+            <p>Simple, transparent pricing for all your haiku needs</p>
+        </header>
+
+        <div class="pricing-grid">
+            <!-- Starter Plan -->
+            <div class="card">
+                <div class="badge">POPULAR</div>
+                <h2 class="plan-name">Starter</h2>
+                <div class="price">$29<span>/month</span></div>
+                <ul class="features">
+                    <li>60 requests/minute</li>
+                    <li>10,000 requests/month included</li>
+                    <li>Community support</li>
+                    <li>1 API key</li>
+                    <li class="unavailable">Advanced analytics</li>
+                    <li class="unavailable">Priority support</li>
+                </ul>
+                <button class="cta-button" onclick="startCheckout('price_starter')">Get Started</button>
+            </div>
+
+            <!-- Professional Plan -->
+            <div class="card featured">
+                <div class="badge" style="background: #764ba2;">RECOMMENDED</div>
+                <h2 class="plan-name">Professional</h2>
+                <div class="price">$99<span>/month</span></div>
+                <ul class="features">
+                    <li>500 requests/minute</li>
+                    <li>100,000 requests/month included</li>
+                    <li>Email support</li>
+                    <li>5 API keys</li>
+                    <li>Basic analytics</li>
+                    <li class="unavailable">Priority support</li>
+                </ul>
+                <button class="cta-button" onclick="startCheckout('price_professional')">Subscribe Now</button>
+            </div>
+
+            <!-- Enterprise Plan -->
+            <div class="card">
+                <div class="badge">CUSTOM</div>
+                <h2 class="plan-name">Enterprise</h2>
+                <div class="price">Custom<span>/month</span></div>
+                <ul class="features">
+                    <li>Unlimited requests/minute</li>
+                    <li>Unlimited monthly requests</li>
+                    <li>24/7 priority support</li>
+                    <li>Unlimited API keys</li>
+                    <li>Advanced analytics & reporting</li>
+                    <li>SLA guarantee</li>
+                </ul>
+                <button class="cta-button secondary" onclick="contactSales()">Contact Sales</button>
+            </div>
+        </div>
+
+        <div class="faq">
+            <h2>Frequently Asked Questions</h2>
+            <div class="faq-item">
+                <h3>What's included in the request limit?</h3>
+                <p>Your monthly request limit covers calls to the <code>/api/haikus</code> endpoint. Rate limits are enforced per minute to prevent abuse. Unused requests do not roll over to the next month.</p>
+            </div>
+            <div class="faq-item">
+                <h3>Can I upgrade or downgrade anytime?</h3>
+                <p>Yes! You can change your plan anytime. Upgrades take effect immediately; downgrades take effect at your next billing cycle. Unused balance is credited.</p>
+            </div>
+            <div class="faq-item">
+                <h3>What payment methods do you accept?</h3>
+                <p>We accept all major credit cards (Visa, MasterCard, American Express) and debit cards via Stripe. All payments are processed securely with PCI compliance.</p>
+            </div>
+            <div class="faq-item">
+                <h3>Is there a free trial?</h3>
+                <p>Contact us at <a href="mailto:support@example.com">support@example.com</a> to discuss trial options. We're happy to set up a test account for evaluation.</p>
+            </div>
+            <div class="faq-item">
+                <h3>What happens if I exceed my limit?</h3>
+                <p>Requests that exceed your rate limit receive a 429 (Too Many Requests) response. We recommend monitoring your usage via the admin dashboard and upgrading if needed.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email Modal -->
+    <div id="emailModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeEmailModal()">&times;</span>
+            <h2 style="color: #333; margin-bottom: 10px;">Enter Your Email</h2>
+            <p style="color: #666; margin-bottom: 20px;">We'll send your API key here after checkout.</p>
+            <input type="email" id="emailInput" class="email-input" placeholder="your@example.com" required>
+            <button class="cta-button" onclick="proceedToCheckout()" style="width: 100%;">Proceed to Checkout</button>
+        </div>
+    </div>
+
+    <script>
+        let selectedPlan = '';
+
+        function startCheckout(priceId) {
+            selectedPlan = priceId;
+            document.getElementById('emailModal').style.display = 'block';
+        }
+
+        function closeEmailModal() {
+            document.getElementById('emailModal').style.display = 'none';
+            selectedPlan = '';
+        }
+
+        function proceedToCheckout() {
+            const email = document.getElementById('emailInput').value;
+            if (!email) {
+                alert('Please enter a valid email');
+                return;
+            }
+
+            // Call the backend to create a checkout session
+            fetch('/billing/create-checkout-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    price_id: selectedPlan,
+                    customer_email: email,
+                    success_url: window.location.origin + '/thanks.html',
+                    cancel_url: window.location.origin + '/pricing.html',
+                }),
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.url) {
+                    window.location.href = data.url;
+                } else if (data.id) {
+                    // Redirect to Stripe Checkout
+                    window.location.href = 'https://checkout.stripe.com/pay/' + data.id;
+                } else {
+                    alert('Error creating checkout session: ' + JSON.stringify(data));
+                }
+            })
+            .catch(err => {
+                alert('Error: ' + err);
+            });
+        }
+
+        function contactSales() {
+            window.location.href = 'mailto:sales@example.com?subject=Enterprise%20Plan%20Inquiry';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('emailModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

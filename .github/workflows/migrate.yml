@@ -1,0 +1,32 @@
+name: Run DB migrations
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: "$GITHUB_SHA-cargo"
+      - name: Setup DB URL
+        run: |
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+      - name: Run migrations
+        run: |
+          cargo build --verbose
+          cargo run -- migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
