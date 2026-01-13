@@ -27,25 +27,9 @@ COPY --from=builder /app/third_party /app/third_party
 WORKDIR /app
 
 ENV PORT=3000
+ENV HAIKUS_PATH=/app/third_party/haikus-for-codespaces/haikus.json
 EXPOSE 3000
 
 CMD ["emvproject"]
-
-# Runtime stage
-FROM debian:bookworm-slim
-
-RUN apt-get update && \
-    apt-get install -y libssl3 ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /app/target/release/emvproject /usr/local/bin/
-COPY --from=builder /app/public /app/public
-COPY --from=builder /app/migrations /app/migrations
-COPY --from=builder /app/third_party /app/third_party
-
-WORKDIR /app
-
-ENV PORT=3000
-EXPOSE 3000
 
 CMD ["emvproject"]
