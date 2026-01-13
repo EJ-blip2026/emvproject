@@ -1,27 +1,35 @@
-FROM rust:1.74 as builder
+FROM rust:1.70 as builder
 
 WORKDIR /app
 
-# Clear cargo cache to avoid edition2024 corruption
-RUN rm -rf /usr/local/cargo/registry
-
-# Copy manifests first for better caching
-COPY Cargo.toml Cargo.lock ./
-
-# Create dummy main to cache dependencies
-RUN mkdir src && \
-    echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src
-
-# Now copy real source
+# Copy source code
+COPY Cargo.toml ./
 COPY src ./src
 COPY migrations ./migrations
 COPY third_party ./third_party
 COPY public ./public
 
-# Build for release
+# Build release - no Cargo.lock, let cargo resolve
 RUN cargo build --release
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y libssl3 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/emvproject /usr/local/bin/
+COPY --from=builder /app/public /app/public
+COPY --from=builder /app/migrations /app/migrations
+COPY --from=builder /app/third_party /app/third_party
+
+WORKDIR /app
+
+ENV PORT=3000
+EXPOSE 3000
+
+CMD ["emvproject"]
 
 # Runtime stage
 FROM debian:bookworm-slim
