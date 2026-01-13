@@ -2,16 +2,22 @@ FROM rust:1.83 as builder
 
 WORKDIR /app
 
-# Copy manifests
-COPY Cargo.toml Cargo.lock* ./
+# Copy manifests first for better caching
+COPY Cargo.toml ./
 
-# Copy source
+# Create dummy main to cache dependencies
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
+
+# Now copy real source
 COPY src ./src
 COPY migrations ./migrations
 COPY third_party ./third_party
 COPY public ./public
 
-# Build with explicit edition
+# Build for release
 RUN cargo build --release
 
 # Runtime stage
@@ -28,6 +34,7 @@ COPY --from=builder /app/third_party /app/third_party
 
 WORKDIR /app
 
+ENV PORT=3000
 EXPOSE 3000
 
 CMD ["emvproject"]
