@@ -2,8 +2,11 @@ FROM rust:1.74 as builder
 
 WORKDIR /app
 
+# Clear cargo cache to avoid edition2024 corruption
+RUN rm -rf /usr/local/cargo/registry
+
 # Copy manifests first for better caching
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 
 # Create dummy main to cache dependencies
 RUN mkdir src && \
