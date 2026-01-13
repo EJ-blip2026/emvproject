@@ -631,7 +631,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Embed haikus.json at compile time to avoid runtime file-missing crashes; allow env override if provided
-    const EMBEDDED_HAIKUS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/haikus.json"));
+    const EMBEDDED_HAIKUS: &str = include_str!("../assets/haikus.json");
     let haikus_raw = match env::var("HAIKUS_PATH") {
         Ok(path) => fs::read_to_string(&path).unwrap_or_else(|_| EMBEDDED_HAIKUS.to_string()),
         Err(_) => EMBEDDED_HAIKUS.to_string(),
