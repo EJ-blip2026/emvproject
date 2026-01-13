@@ -6,7 +6,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY migrations ./migrations
-COPY third_party ./third_party
+COPY assets ./assets
 COPY public ./public
 
 # Build release - use committed Cargo.lock for reproducible builds
