@@ -22,12 +22,10 @@ RUN apt-get update && \
 COPY --from=builder /app/target/release/emvproject /usr/local/bin/
 COPY --from=builder /app/public /app/public
 COPY --from=builder /app/migrations /app/migrations
-COPY --from=builder /app/third_party /app/third_party
 
 WORKDIR /app
 
 ENV PORT=3000
-ENV HAIKUS_PATH=/app/third_party/haikus-for-codespaces/haikus.json
 EXPOSE 3000
 
 CMD ["emvproject"]
