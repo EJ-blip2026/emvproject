@@ -630,8 +630,12 @@ async fn usage_handler(State(state): State<AppState>, headers: axum::http::Heade
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let haikus_path = env::var("HAIKUS_PATH").unwrap_or_else(|_| "third_party/haikus-for-codespaces/haikus.json".to_string());
-    let haikus_raw = fs::read_to_string(&haikus_path).expect("failed to read haikus.json");
+    // Embed haikus.json at compile time to avoid runtime file-missing crashes; allow env override if provided
+    const EMBEDDED_HAIKUS: &str = include_str!("../third_party/haikus-for-codespaces/haikus.json");
+    let haikus_raw = match env::var("HAIKUS_PATH") {
+        Ok(path) => fs::read_to_string(&path).unwrap_or_else(|_| EMBEDDED_HAIKUS.to_string()),
+        Err(_) => EMBEDDED_HAIKUS.to_string(),
+    };
     let haikus: Value = serde_json::from_str(&haikus_raw).expect("invalid json");
 
     let keys_path = env::var("KEYS_PATH").unwrap_or_else(|_| "data/api_keys.json".to_string());
