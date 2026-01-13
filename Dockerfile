@@ -3,13 +3,13 @@ FROM rust:1.70 as builder
 WORKDIR /app
 
 # Copy source code
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY migrations ./migrations
 COPY third_party ./third_party
 COPY public ./public
 
-# Build release - no Cargo.lock, let cargo resolve
+# Build release - use committed Cargo.lock for reproducible builds
 RUN cargo build --release
 
 # Runtime stage
