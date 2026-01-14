@@ -670,11 +670,12 @@ async fn main() {
         }
     };
 
+    println!("Applying migrations against {}", database_url);
+    sqlx::migrate!("./migrations").run(&pool).await.expect("migrations failed");
     if do_migrate {
-        println!("Running migrations against {}", database_url);
-        sqlx::migrate!("./migrations").run(&pool).await.expect("migrations failed");
+        println!("Migrations applied (explicit migrate requested). Continuing startup...");
+    } else {
         println!("Migrations applied.");
-        return;
     }
 
     // Load initial keys from DB if present, otherwise fall back to env
