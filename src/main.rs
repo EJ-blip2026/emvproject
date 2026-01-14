@@ -651,7 +651,7 @@ async fn main() {
     }
 
     // initialize sqlx AnyPool (Postgres if DATABASE_URL set, otherwise sqlite file creds)
-    let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| format!("sqlite://{}", keys_db));
+    let mut database_url = env::var("DATABASE_URL").unwrap_or_else(|_| format!("sqlite://{}", keys_db));
 
     // CLI arg: support `migrate` to run DB migrations and exit
     let args: Vec<String> = env::args().collect();
@@ -663,7 +663,8 @@ async fn main() {
             // If we're using sqlite and the file cannot be opened (common on read-only hosts), fall back to in-memory sqlite.
             if database_url.starts_with("sqlite://") {
                 eprintln!("Failed to open sqlite database '{}': {err}. Falling back to in-memory sqlite.", database_url);
-                AnyPool::connect("sqlite::memory:").await.expect("failed to connect to in-memory sqlite")
+                database_url = "sqlite::memory:".to_string();
+                AnyPool::connect(&database_url).await.expect("failed to connect to in-memory sqlite")
             } else {
                 panic!("failed to connect to database: {err}");
             }
