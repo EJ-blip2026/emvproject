@@ -657,7 +657,18 @@ async fn main() {
     let args: Vec<String> = env::args().collect();
     let do_migrate = args.iter().any(|a| a == "migrate" || a == "--migrate" || a == "-m");
 
-    let pool = AnyPool::connect(&database_url).await.expect("failed to connect to database");
+    let pool = match AnyPool::connect(&database_url).await {
+        Ok(pool) => pool,
+        Err(err) => {
+            // If we're using sqlite and the file cannot be opened (common on read-only hosts), fall back to in-memory sqlite.
+            if database_url.starts_with("sqlite://") {
+                eprintln!("Failed to open sqlite database '{}': {err}. Falling back to in-memory sqlite.", database_url);
+                AnyPool::connect("sqlite::memory:").await.expect("failed to connect to in-memory sqlite")
+            } else {
+                panic!("failed to connect to database: {err}");
+            }
+        }
+    };
 
     if do_migrate {
         println!("Running migrations against {}", database_url);
