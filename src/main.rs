@@ -638,6 +638,9 @@ async fn main() {
     };
     let haikus: Value = serde_json::from_str(&haikus_raw).expect("invalid json");
 
+    // Register compiled sqlx-any drivers (sqlite/postgres) before connecting
+    sqlx::any::install_default_drivers();
+
     let keys_path = env::var("KEYS_PATH").unwrap_or_else(|_| "data/api_keys.json".to_string());
     let keys_db = env::var("KEYS_DB").unwrap_or_else(|_| "data/keys.db".to_string());
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_else(|_| "admintoken".to_string());
