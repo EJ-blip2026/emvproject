@@ -740,7 +740,8 @@ async fn main() {
         .route("/thanks", get(thanks_ui))
         .with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let port = env::var("PORT").ok().and_then(|s| s.parse::<u16>().ok()).unwrap_or(3000);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("Listening on http://{}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
