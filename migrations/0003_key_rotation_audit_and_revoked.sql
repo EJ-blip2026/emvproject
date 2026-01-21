@@ -1,7 +1,7 @@
 -- Add revoked flag to api_keys and create audit/notification tables
 BEGIN;
 
-ALTER TABLE api_keys ADD COLUMN revoked BOOLEAN DEFAULT 0;
+ALTER TABLE api_keys ADD COLUMN revoked BOOLEAN DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS key_rotations (
     id TEXT PRIMARY KEY,
