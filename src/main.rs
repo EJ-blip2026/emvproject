@@ -332,7 +332,18 @@ async fn main() {
 
     // Run migrations
     println!("Applying migrations...");
-    sqlx::migrate!("./migrations").run(&pool).await.expect("migrations failed");
+    let migrator = sqlx::migrate!("./migrations");
+    let migration_result = migrator.run(&pool).await;
+
+    // If the database has a stale migrations table (e.g., old versions), drop and retry once
+    if let Err(sqlx::migrate::MigrateError::VersionMissing(_)) = migration_result {
+        eprintln!("Detected stale migration history. Dropping _sqlx_migrations and retrying...");
+        // Best-effort drop; ignore errors so we can retry
+        let _ = sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations").execute(&pool).await;
+        migrator.run(&pool).await.expect("migrations failed after reset");
+    } else {
+        migration_result.expect("migrations failed");
+    }
     println!("Migrations applied.");
 
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_else(|_| "admintoken".to_string());
