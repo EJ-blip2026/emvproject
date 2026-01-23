@@ -317,7 +317,9 @@ async fn main() {
     sqlx::any::install_default_drivers();
 
     // Database setup
-    let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite::memory:".to_string());
+    let database_url = env::var("DATABASE_URL")
+        .or_else(|_| env::var("RAILWAY_DATABASE_URL"))
+        .unwrap_or_else(|_| "sqlite::memory:".to_string());
     let mut pool = match AnyPool::connect(&database_url).await {
         Ok(pool) => pool,
         Err(err) => {

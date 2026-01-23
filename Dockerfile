@@ -26,7 +26,6 @@ COPY --from=builder /app/migrations /app/migrations
 WORKDIR /app
 
 ENV PORT=8080
-ENV DATABASE_URL=sqlite:vault.db
 EXPOSE 8080
 
 CMD ["emvproject"]
