@@ -1,7 +1,0 @@
-[build]
-builder = "nixpacks"
-
-[deploy]
-startCommand = "cargo run --release"
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 10
