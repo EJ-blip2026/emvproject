@@ -1,6 +1,5 @@
 -- Vault Schema: Zero-Knowledge Encrypted Storage
 -- Features: Text notes, password manager, file storage, sharing
-BEGIN;
 
 -- Drop old haikus-related tables (if any)
 -- (none in current schema)
@@ -118,5 +117,3 @@ CREATE TABLE IF NOT EXISTS webhook_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_webhook_events_stripe_id ON webhook_events(stripe_event_id);
-
-COMMIT;

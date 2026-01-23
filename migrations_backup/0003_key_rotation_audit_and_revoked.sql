@@ -1,5 +1,4 @@
 -- Add revoked flag to api_keys and create audit/notification tables
-BEGIN;
 
 ALTER TABLE api_keys ADD COLUMN revoked BOOLEAN DEFAULT false;
 
@@ -22,5 +21,3 @@ CREATE TABLE IF NOT EXISTS notifications (
     message TEXT,
     created_at TEXT
 );
-
-COMMIT;

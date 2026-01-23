@@ -1,0 +1,118 @@
+<!-- Product Hunt Launch Section -->
+<section id="product-hunt-launch" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 60px 20px; text-align: center; color: white; margin: 80px 0;">
+  <div style="max-width: 800px; margin: 0 auto;">
+    <!-- Animated Badge -->
+    <div style="margin-bottom: 30px; animation: pulse 2s infinite;">
+      <span style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 50px; font-size: 14px; display: inline-block; backdrop-filter: blur(10px);">
+        🚀 Launching Today on Product Hunt
+      </span>
+    </div>
+
+    <!-- Headline -->
+    <h2 style="font-size: 42px; margin: 20px 0; font-weight: 700; line-height: 1.2;">
+      We're on Product Hunt Today
+    </h2>
+
+    <!-- Subheadline -->
+    <p style="font-size: 18px; margin: 15px 0 30px; opacity: 0.95;">
+      Join hundreds of developers discovering the simplest haikus API. Upvote, share your feedback, and get early-bird pricing.
+    </p>
+
+    <!-- CTA Buttons -->
+    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin: 40px 0;">
+      <!-- Product Hunt CTA -->
+      <a href="https://www.producthunt.com/posts/haikus-api" 
+         target="_blank" 
+         rel="noopener noreferrer"
+         style="
+           background: white;
+           color: #667eea;
+           padding: 16px 40px;
+           border-radius: 8px;
+           font-weight: 600;
+           font-size: 16px;
+           text-decoration: none;
+           cursor: pointer;
+           transition: transform 0.2s, box-shadow 0.2s;
+           box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+           display: inline-block;
+         "
+         onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 12px 28px rgba(0,0,0,0.3)';"
+         onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.2)';">
+        👉 View on Product Hunt
+      </a>
+
+      <!-- Share CTA -->
+      <a href="https://twitter.com/intent/tweet?text=Just%20found%20%40HaikuAPI%20-%20a%20dead-simple%20poetry%20API%20built%20in%20Rust.%20%24%2029%2Fmo%20starter.%20No%20setup.%20Check%20it%20out%20on%20%40ProductHunt%20%F0%9F%9A%80&url=https%3A%2F%2Fwww.producthunt.com%2Fposts%2Fhaikus-api" 
+         target="_blank" 
+         rel="noopener noreferrer"
+         style="
+           background: rgba(255,255,255,0.2);
+           color: white;
+           padding: 16px 40px;
+           border-radius: 8px;
+           font-weight: 600;
+           font-size: 16px;
+           text-decoration: none;
+           cursor: pointer;
+           border: 2px solid white;
+           transition: all 0.2s;
+           display: inline-block;
+         "
+         onmouseover="this.style.background='white'; this.style.color='#667eea';"
+         onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.color='white';">
+        🐦 Share on Twitter
+      </a>
+    </div>
+
+    <!-- Social Proof / Stats -->
+    <div style="margin-top: 50px; padding-top: 30px; border-top: 1px solid rgba(255,255,255,0.3);">
+      <p style="font-size: 14px; opacity: 0.85; margin-bottom: 20px;">Early Traction:</p>
+      <div style="display: flex; justify-content: space-around; gap: 20px; flex-wrap: wrap;">
+        <div>
+          <div style="font-size: 28px; font-weight: 700;">500+</div>
+          <div style="font-size: 13px; opacity: 0.8;">API Calls Today</div>
+        </div>
+        <div>
+          <div style="font-size: 28px; font-weight: 700;">48</div>
+          <div style="font-size: 13px; opacity: 0.8;">Hours to Launch</div>
+        </div>
+        <div>
+          <div style="font-size: 28px; font-weight: 700;">$0</div>
+          <div style="font-size: 13px; opacity: 0.8;">Setup Required</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FAQ Dropdown -->
+    <div style="margin-top: 40px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;">
+      <h4 style="margin-bottom: 20px; font-size: 18px;">Why Launch on Product Hunt?</h4>
+      <details style="background: rgba(255,255,255,0.1); padding: 15px; margin-bottom: 10px; border-radius: 8px; cursor: pointer;">
+        <summary style="font-weight: 600; cursor: pointer;">📢 Direct Access to Developers</summary>
+        <p style="margin-top: 10px; opacity: 0.9; font-size: 14px;">Product Hunt is home to 100k+ makers and developers. Perfect audience for an indie API.</p>
+      </details>
+      <details style="background: rgba(255,255,255,0.1); padding: 15px; margin-bottom: 10px; border-radius: 8px; cursor: pointer;">
+        <summary style="font-weight: 600; cursor: pointer;">🎁 Early-Bird Pricing (48 Hours Only)</summary>
+        <p style="margin-top: 10px; opacity: 0.9; font-size: 14px;">Product Hunt users get 50% off first month + exclusive community access.</p>
+      </details>
+      <details style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; cursor: pointer;">
+        <summary style="font-weight: 600; cursor: pointer;">🚀 Featured on Day 1</summary>
+        <p style="margin-top: 10px; opacity: 0.9; font-size: 14px;">We're aiming for top 5 launches today. Your upvote helps us reach the leaderboard!</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- CSS Animation for pulse effect -->
+<style>
+  @keyframes pulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.05);
+      opacity: 0.9;
+    }
+  }
+</style>

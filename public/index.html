@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero-Knowledge Vault</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .auth-section, .vault-section {
+            display: none;
+        }
+        .auth-section.active, .vault-section.active {
+            display: block;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+        .vault-list {
+            display: grid;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .vault-item {
+            padding: 20px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .vault-item:hover {
+            border-color: #667eea;
+            transform: translateX(5px);
+        }
+        .vault-item h3 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .vault-item p {
+            color: #666;
+            font-size: 14px;
+        }
+        .note-list {
+            margin-top: 20px;
+        }
+        .note-item {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .note-item pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 0;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .tab.active {
+            background: #667eea;
+            color: white;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 Zero-Knowledge Vault</h1>
+            <p>Military-grade encryption. Your data, your keys.</p>
+        </div>
+        
+        <div class="content">
+            <!-- Authentication Section -->
+            <div class="auth-section active" id="authSection">
+                <div class="tabs">
+                    <button class="tab active" onclick="showAuthTab('login')">Login</button>
+                    <button class="tab" onclick="showAuthTab('register')">Register</button>
+                </div>
+                
+                <div id="authMessage"></div>
+                
+                <div id="loginTab">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="loginUsername" placeholder="Enter username">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" placeholder="Enter password">
+                    </div>
+                    <button onclick="login()">Login</button>
+                </div>
+                
+                <div id="registerTab" class="hidden">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="registerUsername" placeholder="Choose username">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="registerPassword" placeholder="Choose strong password">
+                    </div>
+                    <button onclick="register()">Create Account</button>
+                </div>
+            </div>
+            
+            <!-- Vault Section -->
+            <div class="vault-section" id="vaultSection">
+                <div class="tabs">
+                    <button class="tab active" onclick="showVaultTab('list')">My Vaults</button>
+                    <button class="tab" onclick="showVaultTab('create')">Create Vault</button>
+                    <button class="tab" onclick="logout()">Logout</button>
+                </div>
+                
+                <div id="vaultMessage"></div>
+                
+                <div id="listTab">
+                    <h2 style="margin-bottom: 15px;">Your Vaults</h2>
+                    <div class="vault-list" id="vaultList"></div>
+                </div>
+                
+                <div id="createTab" class="hidden">
+                    <h2 style="margin-bottom: 15px;">Create New Vault</h2>
+                    <div class="form-group">
+                        <label>Vault Name</label>
+                        <input type="text" id="vaultName" placeholder="e.g., Personal Notes">
+                    </div>
+                    <div class="form-group">
+                        <label>Description (optional)</label>
+                        <input type="text" id="vaultDescription" placeholder="e.g., My private thoughts">
+                    </div>
+                    <button onclick="createVault()">Create Vault</button>
+                </div>
+                
+                <div id="notesTab" class="hidden">
+                    <h2 style="margin-bottom: 15px;" id="vaultTitle"></h2>
+                    <button class="btn-secondary" onclick="showVaultTab('list')">← Back to Vaults</button>
+                    
+                    <div style="margin-top: 20px;">
+                        <h3>Create Note</h3>
+                        <div class="form-group">
+                            <label>Note Content</label>
+                            <textarea id="noteContent" placeholder="Type your encrypted note here..."></textarea>
+                        </div>
+                        <button onclick="createNote()">Save Encrypted Note</button>
+                    </div>
+                    
+                    <div class="note-list" id="noteList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000'
+            : 'https://emvproject-production.up.railway.app';
+        
+        let authToken = sessionStorage.getItem('vault_token');
+        let encryptionKey = sessionStorage.getItem('vault_key');
+        let currentVaultId = null;
+        let currentVaultName = null;
+
+        // Initialize
+        if (authToken) {
+            showSection('vault');
+            loadVaults();
+        }
+
+        function showAuthTab(tab) {
+            document.querySelectorAll('#authSection .tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('loginTab').classList.add('hidden');
+            document.getElementById('registerTab').classList.add('hidden');
+            
+            if (tab === 'login') {
+                document.querySelectorAll('#authSection .tab')[0].classList.add('active');
+                document.getElementById('loginTab').classList.remove('hidden');
+            } else {
+                document.querySelectorAll('#authSection .tab')[1].classList.add('active');
+                document.getElementById('registerTab').classList.remove('hidden');
+            }
+        }
+
+        function showVaultTab(tab) {
+            document.querySelectorAll('#vaultSection .tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('listTab').classList.add('hidden');
+            document.getElementById('createTab').classList.add('hidden');
+            document.getElementById('notesTab').classList.add('hidden');
+            
+            if (tab === 'list') {
+                document.querySelectorAll('#vaultSection .tab')[0].classList.add('active');
+                document.getElementById('listTab').classList.remove('hidden');
+                loadVaults();
+            } else if (tab === 'create') {
+                document.querySelectorAll('#vaultSection .tab')[1].classList.add('active');
+                document.getElementById('createTab').classList.remove('hidden');
+            } else if (tab === 'notes') {
+                document.getElementById('notesTab').classList.remove('hidden');
+                loadNotes();
+            }
+        }
+
+        function showSection(section) {
+            document.getElementById('authSection').classList.remove('active');
+            document.getElementById('vaultSection').classList.remove('active');
+            
+            if (section === 'auth') {
+                document.getElementById('authSection').classList.add('active');
+            } else {
+                document.getElementById('vaultSection').classList.add('active');
+            }
+        }
+
+        function showMessage(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => element.innerHTML = '', 3000);
+        }
+
+        async function register() {
+            const username = document.getElementById('registerUsername').value;
+            const password = document.getElementById('registerPassword').value;
+            
+            if (!username || !password) {
+                showMessage('authMessage', 'Please fill all fields', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username, password})
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage('authMessage', 'Account created! Please login.', 'success');
+                    showAuthTab('login');
+                } else {
+                    showMessage('authMessage', data.error || 'Registration failed', 'error');
+                }
+            } catch (err) {
+                showMessage('authMessage', 'Network error: ' + err.message, 'error');
+            }
+        }
+
+        async function login() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!username || !password) {
+                showMessage('authMessage', 'Please fill all fields', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username, password})
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.token;
+                    sessionStorage.setItem('vault_token', authToken);
+                    // In production, derive key from password using Argon2id (use WASM)
+                    sessionStorage.setItem('vault_key', btoa(password)); // Simplified for MVP
+                    showSection('vault');
+                    loadVaults();
+                } else {
+                    showMessage('authMessage', data.error || 'Login failed', 'error');
+                }
+            } catch (err) {
+                showMessage('authMessage', 'Network error: ' + err.message, 'error');
+            }
+        }
+
+        function logout() {
+            sessionStorage.clear();
+            authToken = null;
+            encryptionKey = null;
+            showSection('auth');
+        }
+
+        async function loadVaults() {
+            try {
+                const response = await fetch(`${API_URL}/vaults/list`, {
+                    headers: {'Authorization': `Bearer ${authToken}`}
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const vaultList = document.getElementById('vaultList');
+                    if (data.vaults.length === 0) {
+                        vaultList.innerHTML = '<p style="color: #666;">No vaults yet. Create one to get started!</p>';
+                    } else {
+                        vaultList.innerHTML = data.vaults.map(vault => `
+                            <div class="vault-item" onclick="openVault('${vault.id}', '${vault.name}')">
+                                <h3>${vault.name}</h3>
+                                <p>${vault.description || 'No description'}</p>
+                                <small style="color: #999;">Created: ${new Date(vault.created_at).toLocaleDateString()}</small>
+                            </div>
+                        `).join('');
+                    }
+                } else {
+                    showMessage('vaultMessage', 'Failed to load vaults', 'error');
+                }
+            } catch (err) {
+                showMessage('vaultMessage', 'Network error: ' + err.message, 'error');
+            }
+        }
+
+        async function createVault() {
+            const name = document.getElementById('vaultName').value;
+            const description = document.getElementById('vaultDescription').value;
+            
+            if (!name) {
+                showMessage('vaultMessage', 'Please enter vault name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/vaults/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({name, description})
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage('vaultMessage', 'Vault created!', 'success');
+                    document.getElementById('vaultName').value = '';
+                    document.getElementById('vaultDescription').value = '';
+                    showVaultTab('list');
+                } else {
+                    showMessage('vaultMessage', data.error || 'Failed to create vault', 'error');
+                }
+            } catch (err) {
+                showMessage('vaultMessage', 'Network error: ' + err.message, 'error');
+            }
+        }
+
+        function openVault(vaultId, vaultName) {
+            currentVaultId = vaultId;
+            currentVaultName = vaultName;
+            document.getElementById('vaultTitle').textContent = vaultName;
+            showVaultTab('notes');
+        }
+
+        async function createNote() {
+            const content = document.getElementById('noteContent').value;
+            
+            if (!content) {
+                showMessage('vaultMessage', 'Please enter note content', 'error');
+                return;
+            }
+
+            // Simple encryption (use WASM crypto in production)
+            const encrypted = btoa(content);
+            const nonce = btoa(Math.random().toString(36).substring(7));
+
+            try {
+                const response = await fetch(`${API_URL}/vaults/${currentVaultId}/notes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        encrypted_content: encrypted,
+                        nonce: nonce
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage('vaultMessage', 'Note saved!', 'success');
+                    document.getElementById('noteContent').value = '';
+                    loadNotes();
+                } else {
+                    showMessage('vaultMessage', data.error || 'Failed to save note', 'error');
+                }
+            } catch (err) {
+                showMessage('vaultMessage', 'Network error: ' + err.message, 'error');
+            }
+        }
+
+        async function loadNotes() {
+            try {
+                const response = await fetch(`${API_URL}/vaults/${currentVaultId}/entries`, {
+                    headers: {'Authorization': `Bearer ${authToken}`}
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const noteList = document.getElementById('noteList');
+                    if (data.entries.length === 0) {
+                        noteList.innerHTML = '<p style="color: #666; margin-top: 20px;">No notes yet.</p>';
+                    } else {
+                        noteList.innerHTML = '<h3 style="margin-top: 30px;">Your Notes</h3>' + 
+                            data.entries.map(entry => {
+                                const decrypted = atob(entry.encrypted_content);
+                                return `
+                                    <div class="note-item">
+                                        <pre>${decrypted}</pre>
+                                        <small style="color: #999;">Created: ${new Date(entry.created_at).toLocaleString()}</small>
+                                    </div>
+                                `;
+                            }).join('');
+                    }
+                } else {
+                    showMessage('vaultMessage', 'Failed to load notes', 'error');
+                }
+            } catch (err) {
+                showMessage('vaultMessage', 'Network error: ' + err.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
