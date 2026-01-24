@@ -317,9 +317,15 @@ async fn main() {
     sqlx::any::install_default_drivers();
 
     // Database setup
-    let database_url = env::var("DATABASE_URL")
+    let mut database_url = env::var("DATABASE_URL")
         .or_else(|_| env::var("RAILWAY_DATABASE_URL"))
         .unwrap_or_else(|_| "sqlite::memory:".to_string());
+
+    // Add SSL mode for Postgres on Railway if not already present
+    if (database_url.starts_with("postgres://") || database_url.starts_with("postgresql://")) && !database_url.contains("sslmode=") {
+        database_url = format!("{}?sslmode=require", database_url);
+    }
+
     let mut pool = match AnyPool::connect(&database_url).await {
         Ok(pool) => pool,
         Err(err) => {
