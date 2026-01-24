@@ -453,11 +453,13 @@ async fn main() {
         .or_else(|_| env::var("RAILWAY_DATABASE_URL"))
         .unwrap_or_else(|_| "sqlite:///app/data/vault.db".to_string());
 
-    // Add SSL mode for Postgres on Railway if not already present
-    if (database_url.starts_with("postgres://") || database_url.starts_with("postgresql://"))
-        && !database_url.contains("sslmode=")
-    {
-        database_url = format!("{}?sslmode=prefer", database_url);
+    // Force SSL for Railway Postgres
+    if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
+        if database_url.contains("sslmode=") {
+            database_url = database_url.replace("sslmode=prefer", "sslmode=require");
+        } else {
+            database_url = format!("{}?sslmode=require", database_url);
+        }
     }
 
     println!(
@@ -472,7 +474,7 @@ async fn main() {
     // Try to connect with exponential backoff for Postgres startup
     let mut pool = None;
     let mut retry_count = 0;
-    let max_retries = 10;
+    let max_retries = 6; // shorten startup delay
 
     while pool.is_none() && retry_count < max_retries {
         match AnyPool::connect(&database_url).await {
@@ -489,7 +491,7 @@ async fn main() {
                     retry_count += 1;
                     if retry_count < max_retries {
                         let wait_time =
-                            std::time::Duration::from_secs(2_u64.pow(retry_count as u32 - 1));
+                            std::time::Duration::from_secs(2_u64.pow(retry_count as u32));
                         eprintln!(
                             "DB connection failed (attempt {}/{}): {err}. Retrying in {:?}...",
                             retry_count, max_retries, wait_time
