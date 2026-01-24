@@ -319,7 +319,7 @@ async fn main() {
     // Database setup
     let mut database_url = env::var("DATABASE_URL")
         .or_else(|_| env::var("RAILWAY_DATABASE_URL"))
-        .unwrap_or_else(|_| "sqlite::memory:".to_string());
+        .unwrap_or_else(|_| "sqlite:///app/data/vault.db".to_string());
 
     // Add SSL mode for Postgres on Railway if not already present
     if (database_url.starts_with("postgres://") || database_url.starts_with("postgresql://")) && !database_url.contains("sslmode=") {
@@ -346,13 +346,17 @@ async fn main() {
                         let wait_time = std::time::Duration::from_secs(2_u64.pow(retry_count as u32 - 1));
                         eprintln!("DB connection failed (attempt {}/{}): {err}. Retrying in {:?}...", retry_count, max_retries, wait_time);
                         tokio::time::sleep(wait_time).await;
-                    } else {
-                        panic!("failed to connect to database after {} attempts: {err}", max_retries);
                     }
                 }
             }
         }
     }
+
+    if pool.is_none() {
+        eprintln!("DB connection failed after {} attempts. Falling back to sqlite::memory: for this run.", max_retries);
+        pool = Some(AnyPool::connect("sqlite::memory:").await.expect("failed to connect to in-memory sqlite"));
+    }
+
     let mut pool = pool.expect("pool not initialized");
 
     // Run migrations
