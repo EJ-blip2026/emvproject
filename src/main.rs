@@ -323,8 +323,10 @@ async fn main() {
 
     // Add SSL mode for Postgres on Railway if not already present
     if (database_url.starts_with("postgres://") || database_url.starts_with("postgresql://")) && !database_url.contains("sslmode=") {
-        database_url = format!("{}?sslmode=require", database_url);
+        database_url = format!("{}?sslmode=prefer", database_url);
     }
+    
+    println!("Connecting to database: {}", database_url.replace(|c: char| c.is_whitespace(), "").chars().take(50).collect::<String>());
 
     // Try to connect with exponential backoff for Postgres startup
     let mut pool = None;
