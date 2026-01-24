@@ -478,7 +478,10 @@ async fn main() {
 
     while pool.is_none() && retry_count < max_retries {
         match AnyPool::connect(&database_url).await {
-            Ok(p) => pool = Some(p),
+            Ok(p) => {
+                eprintln!("✅ Successfully connected to Postgres!");
+                pool = Some(p);
+            }
             Err(err) => {
                 if database_url.starts_with("sqlite://") {
                     eprintln!("Failed to open sqlite database '{}': {err}. Falling back to in-memory sqlite.", database_url);
@@ -505,7 +508,7 @@ async fn main() {
 
     if pool.is_none() {
         eprintln!(
-            "DB connection failed after {} attempts. Falling back to sqlite::memory: for this run.",
+            "❌ DB connection failed after {} attempts. Falling back to sqlite::memory: for this run.",
             max_retries
         );
         pool = Some(
@@ -513,6 +516,8 @@ async fn main() {
                 .await
                 .expect("failed to connect to in-memory sqlite"),
         );
+    } else {
+        eprintln!("✅ Using Postgres (pooled connection ready)");
     }
 
     let pool = pool.expect("pool not initialized");
