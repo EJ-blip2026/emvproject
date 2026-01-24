@@ -475,11 +475,17 @@ async fn main() {
     let mut pool = None;
     let mut retry_count = 0;
     let max_retries = 6; // shorten startup delay
+    let mut used_postgres = false;
 
     while pool.is_none() && retry_count < max_retries {
         match AnyPool::connect(&database_url).await {
             Ok(p) => {
-                eprintln!("✅ Successfully connected to Postgres!");
+                if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
+                    eprintln!("✅ Successfully connected to Postgres!");
+                    used_postgres = true;
+                } else {
+                    eprintln!("✅ Successfully connected to SQLite file database");
+                }
                 pool = Some(p);
             }
             Err(err) => {
@@ -516,8 +522,13 @@ async fn main() {
                 .await
                 .expect("failed to connect to in-memory sqlite"),
         );
-    } else {
+        used_postgres = false;
+    }
+
+    if used_postgres {
         eprintln!("✅ Using Postgres (pooled connection ready)");
+    } else {
+        eprintln!("✅ Using SQLite (in-memory)");
     }
 
     let pool = pool.expect("pool not initialized");
