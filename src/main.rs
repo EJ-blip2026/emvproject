@@ -326,17 +326,32 @@ async fn main() {
         database_url = format!("{}?sslmode=require", database_url);
     }
 
-    let mut pool = match AnyPool::connect(&database_url).await {
-        Ok(pool) => pool,
-        Err(err) => {
-            if database_url.starts_with("sqlite://") {
-                eprintln!("Failed to open sqlite database '{}': {err}. Falling back to in-memory sqlite.", database_url);
-                AnyPool::connect("sqlite::memory:").await.expect("failed to connect to in-memory sqlite")
-            } else {
-                panic!("failed to connect to database: {err}");
+    // Try to connect with exponential backoff for Postgres startup
+    let mut pool = None;
+    let mut retry_count = 0;
+    let max_retries = 10;
+    
+    while pool.is_none() && retry_count < max_retries {
+        match AnyPool::connect(&database_url).await {
+            Ok(p) => pool = Some(p),
+            Err(err) => {
+                if database_url.starts_with("sqlite://") {
+                    eprintln!("Failed to open sqlite database '{}': {err}. Falling back to in-memory sqlite.", database_url);
+                    pool = Some(AnyPool::connect("sqlite::memory:").await.expect("failed to connect to in-memory sqlite"));
+                } else {
+                    retry_count += 1;
+                    if retry_count < max_retries {
+                        let wait_time = std::time::Duration::from_secs(2_u64.pow(retry_count as u32 - 1));
+                        eprintln!("DB connection failed (attempt {}/{}): {err}. Retrying in {:?}...", retry_count, max_retries, wait_time);
+                        tokio::time::sleep(wait_time).await;
+                    } else {
+                        panic!("failed to connect to database after {} attempts: {err}", max_retries);
+                    }
+                }
             }
         }
-    };
+    }
+    let mut pool = pool.expect("pool not initialized");
 
     // Run migrations
     println!("Applying migrations...");
