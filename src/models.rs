@@ -1,4 +1,5 @@
 // Vault data models for zero-knowledge encrypted storage
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 
@@ -93,14 +94,14 @@ pub struct CreateNoteRequest {
 #[derive(Debug, Deserialize)]
 pub struct CreatePasswordRequest {
     pub service_name: String,
-    pub encrypted_username: String,  // Base64
-    pub encrypted_password: String,  // Base64
+    pub encrypted_username: String, // Base64
+    pub encrypted_password: String, // Base64
     pub nonce: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UploadFileRequest {
-    pub encrypted_content: Vec<u8>,  // Binary
+    pub encrypted_content: Vec<u8>, // Binary
     pub nonce: String,
     pub file_size_bytes: i32,
 }

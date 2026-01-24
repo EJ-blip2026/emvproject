@@ -15,7 +15,9 @@ pub enum VaultError {
 impl std::fmt::Display for VaultError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VaultError::InvalidOrUnsupportedFormat => write!(f, "Invalid or unsupported vault format"),
+            VaultError::InvalidOrUnsupportedFormat => {
+                write!(f, "Invalid or unsupported vault format")
+            }
         }
     }
 }

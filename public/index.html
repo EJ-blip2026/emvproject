@@ -4,44 +4,96 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zero-Knowledge Vault</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg: #0b1021;
+            --panel: #0f172a;
+            --card: #0c1427;
+            --border: #1f2a44;
+            --muted: #94a3b8;
+            --accent: #f6c452;
+            --accent-2: #4ade80;
+            --text: #e2e8f0;
         }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif;
+            background: radial-gradient(circle at 20% 20%, rgba(246,196,82,0.05), transparent 25%),
+                        radial-gradient(circle at 80% 10%, rgba(74,222,128,0.08), transparent 30%),
+                        linear-gradient(135deg, #0b1021 0%, #0b1b30 45%, #0d223c 100%);
+            color: var(--text);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 28px;
         }
         .container {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 800px;
-            width: 100%;
+            width: min(1080px, 100%);
+            background: linear-gradient(160deg, rgba(15,23,42,0.92), rgba(12,20,39,0.9));
+            border: 1px solid var(--border);
+            box-shadow: 0 30px 120px rgba(0,0,0,0.45);
+            border-radius: 18px;
             overflow: hidden;
         }
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
+            padding: 32px 32px 24px;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(120deg, rgba(15,23,42,0.9), rgba(12,20,39,0.85));
+        }
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(246,196,82,0.08);
+            color: var(--accent);
+            border: 1px solid rgba(246,196,82,0.2);
+            font-weight: 600;
+            font-size: 14px;
         }
         .header h1 {
-            font-size: 2em;
-            margin-bottom: 10px;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin-bottom: 8px;
         }
         .header p {
-            opacity: 0.9;
+            color: var(--muted);
+            max-width: 780px;
+            line-height: 1.5;
+        }
+        .status-row {
+            margin-top: 18px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .status-chip {
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.02);
+            color: var(--muted);
+            font-size: 14px;
         }
         .content {
-            padding: 30px;
+            padding: 28px 32px 34px;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            background: linear-gradient(180deg, rgba(12,20,39,0.9) 0%, rgba(10,17,33,0.95) 100%);
         }
         .auth-section, .vault-section {
             display: none;
@@ -49,132 +101,114 @@
         .auth-section.active, .vault-section.active {
             display: block;
         }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-        }
+        .form-group { margin-bottom: 18px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text); }
         input, textarea {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #e1e8ed;
-            border-radius: 8px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.03);
+            color: var(--text);
             font-size: 16px;
-            transition: border-color 0.3s;
+            transition: border-color 0.25s, background 0.25s;
         }
         input:focus, textarea:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--accent);
+            background: rgba(246,196,82,0.04);
         }
-        textarea {
-            min-height: 120px;
-            resize: vertical;
-        }
+        textarea { min-height: 120px; resize: vertical; }
         button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: linear-gradient(120deg, var(--accent) 0%, #f3b942 50%, #f6c452 100%);
+            color: #0a0f1d;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: transform 0.16s ease, box-shadow 0.16s ease;
             width: 100%;
+            box-shadow: 0 12px 40px rgba(246,196,82,0.25);
         }
-        button:hover {
-            transform: translateY(-2px);
-        }
-        button:active {
-            transform: translateY(0);
-        }
+        button:hover { transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
         .btn-secondary {
-            background: #6c757d;
-            margin-top: 10px;
+            background: linear-gradient(120deg, #1f2937 0%, #111827 100%);
+            color: #e5e7eb;
+            box-shadow: none;
         }
-        .vault-list {
-            display: grid;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
+        .vault-list { display: grid; gap: 14px; margin-bottom: 12px; }
         .vault-item {
-            padding: 20px;
-            border: 2px solid #e1e8ed;
-            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
             cursor: pointer;
-            transition: all 0.3s;
+            transition: border-color 0.2s, transform 0.2s, background 0.2s;
         }
         .vault-item:hover {
-            border-color: #667eea;
-            transform: translateX(5px);
+            border-color: var(--accent);
+            transform: translateX(4px);
+            background: linear-gradient(135deg, rgba(246,196,82,0.05), rgba(255,255,255,0.02));
         }
-        .vault-item h3 {
-            color: #333;
-            margin-bottom: 5px;
-        }
-        .vault-item p {
-            color: #666;
-            font-size: 14px;
-        }
-        .note-list {
-            margin-top: 20px;
-        }
+        .vault-item h3 { color: var(--text); margin-bottom: 4px; }
+        .vault-item p { color: var(--muted); font-size: 14px; }
+        .note-list { margin-top: 20px; }
         .note-item {
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
+            padding: 14px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 12px;
             margin-bottom: 10px;
         }
-        .note-item pre {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            margin: 0;
-        }
+        .note-item pre { white-space: pre-wrap; word-wrap: break-word; margin: 0; color: var(--text); }
         .error {
-            background: #fee;
-            color: #c33;
+            background: rgba(248,113,113,0.08);
+            color: #fca5a5;
+            border: 1px solid rgba(248,113,113,0.25);
             padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
+            border-radius: 10px;
+            margin-bottom: 12px;
         }
         .success {
-            background: #efe;
-            color: #3c3;
+            background: rgba(74,222,128,0.08);
+            color: #bbf7d0;
+            border: 1px solid rgba(74,222,128,0.25);
             padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
+            border-radius: 10px;
+            margin-bottom: 12px;
         }
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
+        .tabs { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
         .tab {
-            padding: 10px 20px;
-            background: #f8f9fa;
-            border: none;
-            border-radius: 8px;
+            padding: 10px 16px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 10px;
             cursor: pointer;
             font-weight: 600;
+            color: var(--text);
+            transition: border-color 0.2s, background 0.2s, color 0.2s;
         }
-        .tab.active {
-            background: #667eea;
-            color: white;
-        }
-        .hidden {
-            display: none;
-        }
+        .tab.active { background: rgba(246,196,82,0.12); border-color: var(--accent); color: #fefce8; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔒 Zero-Knowledge Vault</h1>
-            <p>Military-grade encryption. Your data, your keys.</p>
+            <div class="header-top">
+                <span class="badge">Zero-Knowledge Vault</span>
+                <span class="status-chip">/health → 200</span>
+            </div>
+            <h1>Own your secrets end-to-end.</h1>
+            <p>Axum + Argon2id + XChaCha20 storage with client-side encryption flow. No trackers, no analytics, no third-party vaults.</p>
+            <div class="status-row">
+                <span class="status-chip">Encrypted notes + vaults</span>
+                <span class="status-chip">Session tokens in-memory</span>
+                <span class="status-chip">Postgres or SQLite fallback</span>
+            </div>
         </div>
         
         <div class="content">
@@ -260,9 +294,9 @@
     </div>
 
     <script>
-        const API_URL = window.location.hostname === 'localhost' 
+        const API_URL = window.location.hostname === 'localhost'
             ? 'http://localhost:3000'
-            : 'https://emvproject-production.up.railway.app';
+            : window.location.origin;
         
         let authToken = sessionStorage.getItem('vault_token');
         let encryptionKey = sessionStorage.getItem('vault_key');
@@ -334,6 +368,8 @@
                 return;
             }
 
+            console.log('Registering user:', username, 'at', API_URL);
+            
             try {
                 const response = await fetch(`${API_URL}/auth/register`, {
                     method: 'POST',
@@ -341,7 +377,9 @@
                     body: JSON.stringify({username, password})
                 });
                 
+                console.log('Response status:', response.status);
                 const data = await response.json();
+                console.log('Response data:', data);
                 
                 if (response.ok) {
                     showMessage('authMessage', 'Account created! Please login.', 'success');
@@ -350,6 +388,7 @@
                     showMessage('authMessage', data.error || 'Registration failed', 'error');
                 }
             } catch (err) {
+                console.error('Registration error:', err);
                 showMessage('authMessage', 'Network error: ' + err.message, 'error');
             }
         }

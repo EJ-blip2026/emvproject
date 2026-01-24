@@ -1,14 +1,12 @@
 // Zero-Knowledge Vault Backend
 // Handles encrypted storage, key derivation, and sharing
 
-use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::SaltString;
-use chacha20poly1305::{XChaCha20Poly1305, Key, XNonce};
+use argon2::Argon2;
 use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 use std::fmt;
-use zeroize::Zeroize;
 
 #[derive(Debug)]
 pub enum CryptoError {
@@ -16,7 +14,6 @@ pub enum CryptoError {
     DecryptionFailed,
     KeyDerivationFailed,
     InvalidNonce,
-    InvalidInput,
 }
 
 impl fmt::Display for CryptoError {
@@ -26,7 +23,6 @@ impl fmt::Display for CryptoError {
             Self::DecryptionFailed => write!(f, "Decryption failed"),
             Self::KeyDerivationFailed => write!(f, "Key derivation failed"),
             Self::InvalidNonce => write!(f, "Invalid nonce"),
-            Self::InvalidInput => write!(f, "Invalid input"),
         }
     }
 }
@@ -40,48 +36,34 @@ pub fn derive_key(password: &str) -> Result<([u8; 32], String), CryptoError> {
     let salt = SaltString::generate(rand::thread_rng());
     let salt_str = salt.to_string();
 
-    // Create Argon2id hasher with secure parameters
-    // Tuned to resist GPU brute-force attacks (memory-intensive, time-intensive)
+    // Derive a 32-byte key directly into the buffer
     let argon2 = Argon2::default();
-
-    // Hash password with Argon2id
-    let password_hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|_| CryptoError::KeyDerivationFailed)?
-        .to_string();
-
-    // Extract the hash and truncate to 32 bytes for XChaCha20 key
-    let hash_value = password_hash
-        .split('$')
-        .nth(4)
-        .ok_or(CryptoError::KeyDerivationFailed)?;
-    
     let mut key_bytes = [0u8; 32];
-    let decoded = base64_decode(hash_value).map_err(|_| CryptoError::KeyDerivationFailed)?;
-    key_bytes.copy_from_slice(&decoded[..32.min(decoded.len())]);
+    argon2
+        .hash_password_into(
+            password.as_bytes(),
+            salt.as_salt().as_ref().as_bytes(),
+            &mut key_bytes,
+        )
+        .map_err(|_| CryptoError::KeyDerivationFailed)?;
 
     Ok((key_bytes, salt_str))
 }
 
 /// Verify password against a known salt
+#[allow(dead_code)]
 pub fn verify_password(password: &str, salt_str: &str) -> Result<[u8; 32], CryptoError> {
-    let salt = SaltString::encode_b64(salt_str.as_bytes())
-        .map_err(|_| CryptoError::KeyDerivationFailed)?;
+    let salt = SaltString::from_b64(salt_str).map_err(|_| CryptoError::KeyDerivationFailed)?;
 
     let argon2 = Argon2::default();
-    let password_hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|_| CryptoError::KeyDerivationFailed)?
-        .to_string();
-
-    let hash_value = password_hash
-        .split('$')
-        .nth(4)
-        .ok_or(CryptoError::KeyDerivationFailed)?;
-    
     let mut key_bytes = [0u8; 32];
-    let decoded = base64_decode(hash_value).map_err(|_| CryptoError::KeyDerivationFailed)?;
-    key_bytes.copy_from_slice(&decoded[..32.min(decoded.len())]);
+    argon2
+        .hash_password_into(
+            password.as_bytes(),
+            salt.as_salt().as_ref().as_bytes(),
+            &mut key_bytes,
+        )
+        .map_err(|_| CryptoError::KeyDerivationFailed)?;
 
     Ok(key_bytes)
 }
@@ -108,9 +90,8 @@ pub fn encrypt(plaintext: &[u8], key: &[u8; 32]) -> Result<(Vec<u8>, String), Cr
 
 /// Decrypt ciphertext with XChaCha20-Poly1305
 pub fn decrypt(ciphertext: &[u8], key: &[u8; 32], nonce_str: &str) -> Result<Vec<u8>, CryptoError> {
-    let nonce_bytes = hex::decode(nonce_str)
-        .map_err(|_| CryptoError::InvalidNonce)?;
-    
+    let nonce_bytes = hex::decode(nonce_str).map_err(|_| CryptoError::InvalidNonce)?;
+
     if nonce_bytes.len() != 24 {
         return Err(CryptoError::InvalidNonce);
     }
@@ -134,12 +115,6 @@ pub fn generate_api_key() -> String {
         .take(64)
         .map(char::from)
         .collect()
-}
-
-// Helper: Base64 decode (simple implementation)
-fn base64_decode(input: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    use base64::{engine::general_purpose, Engine as _};
-    Ok(general_purpose::STANDARD.decode(input)?)
 }
 
 #[cfg(test)]
