@@ -341,6 +341,80 @@ async fn create_note_handler(
     }
 }
 
+async fn upload_file_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(vault_id): AxumPath<String>,
+    Json(req): Json<UploadFileRequest>,
+) -> impl IntoResponse {
+    let user_id = match authenticate(&state, &headers).await {
+        Some(uid) => uid,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
+            )
+                .into_response()
+        }
+    };
+
+    // Ensure the vault belongs to the authenticated user
+    let vault_check =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM vaults WHERE id = $1 AND user_id = $2")
+            .bind(&vault_id)
+            .bind(&user_id)
+            .fetch_one(&state.db_pool)
+            .await;
+
+    if vault_check.unwrap_or(0) == 0 {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Vault not found or access denied"})),
+        )
+            .into_response();
+    }
+
+    let encrypted_content = match base64::engine::general_purpose::STANDARD.decode(&req.encrypted_content) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid base64 content"})),
+            )
+                .into_response()
+        }
+    };
+
+    let entry_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let result = sqlx::query(
+        "INSERT INTO vault_entries (id, vault_id, entry_type, encrypted_content, nonce, file_size_bytes, created_at, updated_at) \
+         VALUES ($1, $2, 'file', $3, $4, $5, $6, $6)"
+    )
+    .bind(&entry_id)
+    .bind(&vault_id)
+    .bind(&encrypted_content)
+    .bind(&req.nonce)
+    .bind(req.file_size_bytes)
+    .bind(&now)
+    .execute(&state.db_pool)
+    .await;
+
+    match result {
+        Ok(_) => (
+            StatusCode::CREATED,
+            Json(json!({"entry_id": entry_id, "message": "File stored"})),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Failed to save file: {}", e)})),
+        )
+            .into_response(),
+    }
+}
+
 async fn list_entries_handler(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -373,8 +447,8 @@ async fn list_entries_handler(
             .into_response();
     }
 
-    let entries_result = sqlx::query_as::<_, (String, String, Vec<u8>, String, String)>(
-        "SELECT id, entry_type, encrypted_content, nonce, created_at FROM vault_entries WHERE vault_id = $1 ORDER BY created_at DESC"
+    let entries_result = sqlx::query_as::<_, (String, String, Vec<u8>, String, Option<i32>, String)>(
+        "SELECT id, entry_type, encrypted_content, nonce, file_size_bytes, created_at FROM vault_entries WHERE vault_id = $1 ORDER BY created_at DESC"
     )
     .bind(&vault_id)
     .fetch_all(&state.db_pool)
@@ -384,16 +458,17 @@ async fn list_entries_handler(
         Ok(entries) => {
             let entry_list: Vec<VaultEntryResponse> = entries
                 .into_iter()
-                .map(
-                    |(id, entry_type, encrypted_content, nonce, created_at)| VaultEntryResponse {
+                .map(|(id, entry_type, encrypted_content, nonce, file_size_bytes, created_at)| {
+                    VaultEntryResponse {
                         id,
                         entry_type,
                         encrypted_content: base64::engine::general_purpose::STANDARD
                             .encode(&encrypted_content),
                         nonce,
+                        file_size_bytes,
                         created_at,
-                    },
-                )
+                    }
+                })
                 .collect();
             (StatusCode::OK, Json(json!({"entries": entry_list}))).into_response()
         }
@@ -574,6 +649,8 @@ async fn main() {
         // Notes API
         .route("/vaults/:vault_id/notes", post(create_note_handler))
         .route("/vaults/:vault_id/entries", get(list_entries_handler))
+        // Files API
+        .route("/vaults/:vault_id/files", post(upload_file_handler))
         .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
         .with_state(state.clone())
         // Serve static files (frontend) - must come last

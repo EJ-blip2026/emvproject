@@ -101,7 +101,7 @@ pub struct CreatePasswordRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct UploadFileRequest {
-    pub encrypted_content: Vec<u8>, // Binary
+    pub encrypted_content: String, // Base64-encoded
     pub nonce: String,
     pub file_size_bytes: i32,
 }
@@ -127,6 +127,7 @@ pub struct VaultEntryResponse {
     pub entry_type: String,
     pub encrypted_content: String, // Base64
     pub nonce: String,
+    pub file_size_bytes: Option<i32>,
     pub created_at: String,
 }
 

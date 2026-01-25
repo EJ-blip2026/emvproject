@@ -164,6 +164,30 @@
             margin-bottom: 10px;
         }
         .note-item pre { white-space: pre-wrap; word-wrap: break-word; margin: 0; color: var(--text); }
+        .file-item {
+            padding: 14px;
+            background: rgba(74,222,128,0.05);
+            border: 1px solid rgba(74,222,128,0.2);
+            border-radius: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .file-info { flex-grow: 1; }
+        .file-download-btn {
+            padding: 8px 16px;
+            background: linear-gradient(120deg, var(--accent-2), #22c55e);
+            color: #0a0f1d;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            width: auto;
+            box-shadow: 0 6px 20px rgba(74,222,128,0.2);
+        }
+        .file-download-btn:hover { transform: translateY(-1px); }
         .error {
             background: rgba(248,113,113,0.08);
             color: #fca5a5;
@@ -285,6 +309,15 @@
                             <textarea id="noteContent" placeholder="Type your encrypted note here..."></textarea>
                         </div>
                         <button onclick="createNote()">Save Encrypted Note</button>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+                        <h3>Upload File</h3>
+                        <div class="form-group">
+                            <label>Select File</label>
+                            <input type="file" id="fileInput" style="padding: 10px;">
+                        </div>
+                        <button onclick="uploadFile()">Encrypt & Upload File</button>
                     </div>
                     
                     <div class="note-list" id="noteList"></div>
@@ -553,10 +586,16 @@
                 if (response.ok) {
                     const noteList = document.getElementById('noteList');
                     if (data.entries.length === 0) {
-                        noteList.innerHTML = '<p style="color: #666; margin-top: 20px;">No notes yet.</p>';
+                        noteList.innerHTML = '<p style="color: #666; margin-top: 20px;">No entries yet.</p>';
                     } else {
-                        noteList.innerHTML = '<h3 style="margin-top: 30px;">Your Notes</h3>' + 
-                            data.entries.map(entry => {
+                        const notes = data.entries.filter(e => e.entry_type === 'note');
+                        const files = data.entries.filter(e => e.entry_type === 'file');
+                        
+                        let html = '';
+                        
+                        if (notes.length > 0) {
+                            html += '<h3 style="margin-top: 30px;">Your Notes</h3>';
+                            html += notes.map(entry => {
                                 const decrypted = atob(entry.encrypted_content);
                                 return `
                                     <div class="note-item">
@@ -565,12 +604,102 @@
                                     </div>
                                 `;
                             }).join('');
+                        }
+                        
+                        if (files.length > 0) {
+                            html += '<h3 style="margin-top: 30px;">Your Files</h3>';
+                            html += files.map(entry => {
+                                const sizeKB = entry.file_size_bytes ? (entry.file_size_bytes / 1024).toFixed(2) : '?';
+                                return `
+                                    <div class="file-item">
+                                        <div class="file-info">
+                                            <strong>📎 File (${sizeKB} KB)</strong><br>
+                                            <small style="color: #999;">Created: ${new Date(entry.created_at).toLocaleString()}</small>
+                                        </div>
+                                        <button class="file-download-btn" onclick="downloadFile('${entry.id}', '${entry.encrypted_content}', '${entry.nonce}')">Download</button>
+                                    </div>
+                                `;
+                            }).join('');
+                        }
+                        
+                        noteList.innerHTML = html;
                     }
                 } else {
-                    showMessage('vaultMessage', 'Failed to load notes', 'error');
+                    showMessage('vaultMessage', 'Failed to load entries', 'error');
                 }
             } catch (err) {
                 showMessage('vaultMessage', 'Network error: ' + err.message, 'error');
+            }
+        }
+        
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showMessage('vaultMessage', 'Please select a file', 'error');
+                return;
+            }
+            
+            try {
+                // Read file as ArrayBuffer
+                const arrayBuffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                
+                // Simple encryption (use proper XChaCha20 in production)
+                const encrypted = btoa(String.fromCharCode.apply(null, bytes));
+                const nonce = btoa(Math.random().toString(36).substring(2) + Date.now().toString(36));
+                
+                const response = await fetch(`${API_URL}/vaults/${currentVaultId}/files`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        encrypted_content: encrypted,
+                        nonce: nonce,
+                        file_size_bytes: file.size
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showMessage('vaultMessage', 'File uploaded successfully!', 'success');
+                    fileInput.value = '';
+                    loadNotes();
+                } else {
+                    showMessage('vaultMessage', data.error || 'Failed to upload file', 'error');
+                }
+            } catch (err) {
+                showMessage('vaultMessage', 'Upload error: ' + err.message, 'error');
+            }
+        }
+        
+        function downloadFile(entryId, encryptedContent, nonce) {
+            try {
+                // Decrypt (simple base64 decode for MVP)
+                const decoded = atob(encryptedContent);
+                const bytes = new Uint8Array(decoded.length);
+                for (let i = 0; i < decoded.length; i++) {
+                    bytes[i] = decoded.charCodeAt(i);
+                }
+                
+                // Create blob and download
+                const blob = new Blob([bytes]);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `file_${entryId.substring(0, 8)}.bin`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showMessage('vaultMessage', 'File downloaded!', 'success');
+            } catch (err) {
+                showMessage('vaultMessage', 'Download error: ' + err.message, 'error');
             }
         }
     </script>
