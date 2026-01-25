@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS vault_entries (
     id TEXT PRIMARY KEY,
     vault_id TEXT NOT NULL,
     entry_type TEXT NOT NULL CHECK(entry_type IN ('note', 'password', 'file')),
-    encrypted_content BLOB NOT NULL,
+    encrypted_content BYTEA NOT NULL,
     nonce TEXT NOT NULL,
     file_size_bytes INTEGER,
     created_at TEXT NOT NULL,
@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS passwords (
     id TEXT PRIMARY KEY,
     vault_entry_id TEXT NOT NULL,
     service_name TEXT,
-    encrypted_username BLOB,
-    encrypted_password BLOB,
+    encrypted_username BYTEA,
+    encrypted_password BYTEA,
     created_at TEXT NOT NULL,
     FOREIGN KEY(vault_entry_id) REFERENCES vault_entries(id) ON DELETE CASCADE
 );
