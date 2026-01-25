@@ -646,8 +646,13 @@
                 const arrayBuffer = await file.arrayBuffer();
                 const bytes = new Uint8Array(arrayBuffer);
                 
-                // Simple encryption (use proper XChaCha20 in production)
-                const encrypted = btoa(String.fromCharCode.apply(null, bytes));
+                // Convert bytes to base64 without stack overflow (chunk-based for large files)
+                let binary = '';
+                const chunkSize = 8192;
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+                }
+                const encrypted = btoa(binary);
                 const nonce = btoa(Math.random().toString(36).substring(2) + Date.now().toString(36));
                 
                 const response = await fetch(`${API_URL}/vaults/${currentVaultId}/files`, {
