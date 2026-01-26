@@ -3,6 +3,35 @@
 
 use serde::{Deserialize, Serialize};
 
+// Subscription tier definitions
+pub const TIER_STARTER: &str = "Starter";
+pub const TIER_PRO: &str = "Pro";
+pub const TIER_ENTERPRISE: &str = "Enterprise";
+
+pub const STARTER_STORAGE_GB: i32 = 5;
+pub const PRO_STORAGE_GB: i32 = 100;
+pub const ENTERPRISE_STORAGE_GB: i32 = 1024;
+
+pub const STARTER_PRICE: &str = "Free";
+pub const PRO_PRICE: &str = "$9.99/month";
+pub const ENTERPRISE_PRICE: &str = "$49.99/month";
+
+pub fn get_storage_limit(tier: &str) -> i32 {
+    match tier {
+        TIER_PRO => PRO_STORAGE_GB,
+        TIER_ENTERPRISE => ENTERPRISE_STORAGE_GB,
+        _ => STARTER_STORAGE_GB,
+    }
+}
+
+pub fn get_tier_price(tier: &str) -> &'static str {
+    match tier {
+        TIER_PRO => PRO_PRICE,
+        TIER_ENTERPRISE => ENTERPRISE_PRICE,
+        _ => STARTER_PRICE,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
@@ -64,6 +93,7 @@ pub struct SharedVault {
 pub struct RegisterRequest {
     pub username: String,
     pub password: String,
+    pub subscription_tier: Option<String>, // "Starter", "Pro", or "Enterprise" - defaults to Starter
 }
 
 #[derive(Debug, Deserialize)]

@@ -217,6 +217,21 @@
         }
         .tab.active { background: rgba(246,196,82,0.12); border-color: var(--accent); color: #fefce8; }
         .hidden { display: none; }
+        .tier-selector { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .tier-card {
+            padding: 16px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.02);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .tier-card:hover { border-color: var(--accent); background: rgba(246,196,82,0.05); }
+        .tier-card.selected { border-color: var(--accent); background: rgba(246,196,82,0.1); }
+        .tier-card h4 { margin-bottom: 8px; color: var(--text); }
+        .tier-price { color: var(--accent); font-weight: 700; margin: 8px 0; font-size: 18px; }
+        .tier-storage { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
     </style>
 </head>
 <body>
@@ -266,6 +281,30 @@
                         <label>Password</label>
                         <input type="password" id="registerPassword" placeholder="Choose strong password">
                     </div>
+                    <div class="form-group">
+                        <label>Select Plan</label>
+                        <div class="tier-selector" id="tierSelector">
+                            <div class="tier-card selected" onclick="selectTier('Starter')", id="tier-starter">
+                                <h4>🎁 Starter</h4>
+                                <div class="tier-price">Free</div>
+                                <div class="tier-storage">5 GB storage</div>
+                                <small style="color: #999;">Perfect to start</small>
+                            </div>
+                            <div class="tier-card" onclick="selectTier('Pro')" id="tier-pro">
+                                <h4>⚡ Pro</h4>
+                                <div class="tier-price">$9.99/mo</div>
+                                <div class="tier-storage">100 GB storage</div>
+                                <small style="color: #999;">For power users</small>
+                            </div>
+                            <div class="tier-card" onclick="selectTier('Enterprise')" id="tier-enterprise">
+                                <h4>🏢 Enterprise</h4>
+                                <div class="tier-price">$49.99/mo</div>
+                                <div class="tier-storage">1 TB storage</div>
+                                <small style="color: #999;">For teams</small>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="selectedTier" value="Starter">
                     <button onclick="register()">Create Account</button>
                 </div>
             </div>
@@ -392,9 +431,16 @@
             setTimeout(() => element.innerHTML = '', 3000);
         }
 
+        function selectTier(tier) {
+            document.getElementById('selectedTier').value = tier;
+            document.querySelectorAll('.tier-card').forEach(card => card.classList.remove('selected'));
+            document.getElementById('tier-' + tier.toLowerCase()).classList.add('selected');
+        }
+
         async function register() {
             const username = document.getElementById('registerUsername').value;
             const password = document.getElementById('registerPassword').value;
+            const subscription_tier = document.getElementById('selectedTier').value;
             
             if (!username || !password) {
                 showMessage('authMessage', 'Please fill all fields', 'error');
@@ -407,7 +453,7 @@
                 const response = await fetch(`${API_URL}/auth/register`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({username, password})
+                    body: JSON.stringify({username, password, subscription_tier})
                 });
                 
                 console.log('Response status:', response.status);
@@ -415,7 +461,7 @@
                 console.log('Response data:', data);
                 
                 if (response.ok) {
-                    showMessage('authMessage', 'Account created! Please login.', 'success');
+                    showMessage('authMessage', `Account created on ${subscription_tier} plan! Please login.`, 'success');
                     showAuthTab('login');
                 } else {
                     showMessage('authMessage', data.error || 'Registration failed', 'error');

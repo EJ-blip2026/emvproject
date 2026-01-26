@@ -80,15 +80,31 @@ async fn register_handler(
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
+    // Determine subscription tier (default to Starter)
+    let tier = req.subscription_tier
+        .as_ref()
+        .map(|t| t.as_str())
+        .unwrap_or(models::TIER_STARTER);
+    
+    // Validate tier
+    let tier = match tier {
+        models::TIER_PRO | models::TIER_ENTERPRISE => tier,
+        _ => models::TIER_STARTER,
+    };
+    
+    let storage_limit = models::get_storage_limit(tier);
+
     // Insert user into DB
     let result = sqlx::query(
         "INSERT INTO users (id, username, password_hash, encryption_key_salt, subscription_tier, storage_limit_gb, storage_used_gb, created_at, updated_at) 
-         VALUES ($1, $2, $3, $4, 'Starter', 5, 0, $5, $5)"
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $7)"
     )
     .bind(&user_id)
     .bind(&req.username)
     .bind(&password_hash)
     .bind(&salt)
+    .bind(tier)
+    .bind(storage_limit)
     .bind(&now)
     .execute(&state.db_pool)
     .await;
