@@ -22,6 +22,8 @@ sha2 = "0.10"
 hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["alloc", "serde"] }
+oauth2 = "4.4"
+url = "2.5"
 
 # Cryptography for zero-knowledge vault
 argon2 = "0.5"

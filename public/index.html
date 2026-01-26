@@ -393,6 +393,21 @@
                         <button onclick="uploadFile()">Encrypt & Upload File</button>
                     </div>
                     
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+                        <h3>Import from Cloud Storage</h3>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                            <button class="btn-secondary" onclick="connectGoogleDrive()">📁 Google Drive</button>
+                            <button class="btn-secondary" onclick="connectOneDrive()">☁️ OneDrive</button>
+                            <button class="btn-secondary" onclick="alert('iCloud not yet supported')">🍎 iCloud (Soon)</button>
+                            <button class="btn-secondary" onclick="alert('S3 coming soon')">📦 AWS S3 (Soon)</button>
+                        </div>
+                        <div id="cloudFileList" class="hidden" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: rgba(255,255,255,0.02);">
+                            <h4 style="margin-bottom: 10px;">Select files to import:</h4>
+                            <div id="cloudFiles"></div>
+                            <button onclick="importSelectedFiles()" style="margin-top: 10px;">Import Selected</button>
+                        </div>
+                    </div>
+                    
                     <div class="note-list" id="noteList"></div>
                 </div>
             </div>
@@ -408,6 +423,9 @@
         let encryptionKey = sessionStorage.getItem('vault_key');
         let currentVaultId = null;
         let currentVaultName = null;
+        let cloudAccessToken = null;
+        let cloudProvider = null;
+        let selectedCloudFiles = [];
 
         // Initialize
         if (authToken) {
@@ -848,6 +866,138 @@
                 showMessage('vaultMessage', 'File downloaded!', 'success');
             } catch (err) {
                 showMessage('vaultMessage', 'Download error: ' + err.message, 'error');
+            }
+        }
+
+        // Cloud import functions
+        function connectGoogleDrive() {
+            // OAuth 2.0 flow for Google Drive
+            const clientId = ''; // Set this in env or hardcode for demo
+            const redirectUri = encodeURIComponent(window.location.origin + '/oauth-callback');
+            const scope = encodeURIComponent('https://www.googleapis.com/auth/drive.readonly');
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}`;
+            
+            if (!clientId) {
+                // For MVP: prompt user to paste access token manually
+                const token = prompt('Paste your Google Drive access token:\\n\\n(Get one from https://developers.google.com/oauthplayground)');
+                if (token) {
+                    cloudAccessToken = token;
+                    cloudProvider = 'google_drive';
+                    loadCloudFiles();
+                }
+            } else {
+                window.location.href = authUrl;
+            }
+        }
+
+        function connectOneDrive() {
+            const clientId = ''; // Set this for OneDrive
+            const redirectUri = encodeURIComponent(window.location.origin + '/oauth-callback');
+            const scope = encodeURIComponent('Files.Read.All');
+            const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}`;
+            
+            if (!clientId) {
+                const token = prompt('Paste your OneDrive access token:\\n\\n(Get one from Microsoft Graph Explorer)');
+                if (token) {
+                    cloudAccessToken = token;
+                    cloudProvider = 'onedrive';
+                    loadCloudFiles();
+                }
+            } else {
+                window.location.href = authUrl;
+            }
+        }
+
+        async function loadCloudFiles() {
+            if (!cloudAccessToken || !cloudProvider) {
+                showMessage('vaultMessage', 'No cloud connection', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/cloud/list`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        provider: cloudProvider,
+                        access_token: cloudAccessToken
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok && data.files) {
+                    displayCloudFiles(data.files);
+                } else {
+                    showMessage('vaultMessage', data.error || 'Failed to load cloud files', 'error');
+                }
+            } catch (err) {
+                showMessage('vaultMessage', 'Cloud API error: ' + err.message, 'error');
+            }
+        }
+
+        function displayCloudFiles(files) {
+            const container = document.getElementById('cloudFiles');
+            const panel = document.getElementById('cloudFileList');
+            selectedCloudFiles = [];
+
+            if (files.length === 0) {
+                container.innerHTML = '<p style=\"color: #999;\">No files found</p>';
+            } else {
+                container.innerHTML = files.map((f, idx) => `
+                    <label style=\"display: block; padding: 8px; cursor: pointer; border-bottom: 1px solid var(--border);\">
+                        <input type=\"checkbox\" value=\"${f.id}\" onchange=\"toggleCloudFile('${f.id}')\"> 
+                        ${f.name} (${(f.size / 1024).toFixed(2)} KB)
+                    </label>
+                `).join('');
+            }
+
+            panel.classList.remove('hidden');
+        }
+
+        function toggleCloudFile(fileId) {
+            const idx = selectedCloudFiles.indexOf(fileId);
+            if (idx > -1) {
+                selectedCloudFiles.splice(idx, 1);
+            } else {
+                selectedCloudFiles.push(fileId);
+            }
+        }
+
+        async function importSelectedFiles() {
+            if (selectedCloudFiles.length === 0) {
+                showMessage('vaultMessage', 'No files selected', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/vaults/${currentVaultId}/import`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        provider: cloudProvider,
+                        access_token: cloudAccessToken,
+                        file_ids: selectedCloudFiles
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    showMessage('vaultMessage', data.message, 'success');
+                    document.getElementById('cloudFileList').classList.add('hidden');
+                    selectedCloudFiles = [];
+                    loadNotes();
+                    loadUsage();
+                } else {
+                    showMessage('vaultMessage', data.error || 'Import failed', 'error');
+                }
+            } catch (err) {
+                showMessage('vaultMessage', 'Import error: ' + err.message, 'error');
             }
         }
     </script>

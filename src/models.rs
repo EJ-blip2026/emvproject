@@ -170,6 +170,21 @@ pub struct UsageResponse {
     pub entry_count: i32,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CloudImportRequest {
+    pub provider: String, // "google_drive", "onedrive", "s3"
+    pub access_token: String,
+    pub file_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CloudFileResponse {
+    pub id: String,
+    pub name: String,
+    pub size: i64,
+    pub mime_type: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub error: String,

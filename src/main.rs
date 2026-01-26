@@ -3,6 +3,7 @@
 
 mod crypto;
 mod models;
+mod cloud_import;
 
 use axum::{
     extract::{Path as AxumPath, State},
@@ -773,6 +774,175 @@ async fn upgrade_enterprise_handler(
             .into_response(),
     }
 }
+
+// ============================================================================
+// CLOUD IMPORT HANDLERS
+// ============================================================================
+
+async fn list_cloud_files_handler(
+    State(_state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let provider = req["provider"].as_str().unwrap_or("");
+    let access_token = req["access_token"].as_str().unwrap_or("");
+
+    if access_token.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "access_token required"})),
+        )
+            .into_response();
+    }
+
+    let files = match provider {
+        "google_drive" => cloud_import::google_drive::list_files(access_token).await,
+        "onedrive" => cloud_import::onedrive::list_files(access_token).await,
+        _ => Err(format!("Unsupported provider: {}", provider)),
+    };
+
+    match files {
+        Ok(files) => {
+            let response: Vec<models::CloudFileResponse> = files
+                .into_iter()
+                .map(|f| models::CloudFileResponse {
+                    id: f.id,
+                    name: f.name,
+                    size: f.size,
+                    mime_type: f.mime_type,
+                })
+                .collect();
+            (StatusCode::OK, Json(json!({"files": response}))).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e})),
+        )
+            .into_response(),
+    }
+}
+
+async fn import_cloud_files_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(vault_id): AxumPath<String>,
+    Json(req): Json<models::CloudImportRequest>,
+) -> impl IntoResponse {
+    let user_id = match authenticate(&state, &headers).await {
+        Some(uid) => uid,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
+            )
+                .into_response()
+        }
+    };
+
+    // Verify vault ownership
+    let vault_check =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM vaults WHERE id = $1 AND user_id = $2")
+            .bind(&vault_id)
+            .bind(&user_id)
+            .fetch_one(&state.db_pool)
+            .await;
+
+    if vault_check.unwrap_or(0) == 0 {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Vault not found or access denied"})),
+        )
+            .into_response();
+    }
+
+    let mut imported_count = 0;
+    let mut failed_count = 0;
+
+    for file_id in &req.file_ids {
+        let content = match req.provider.as_str() {
+            "google_drive" => {
+                cloud_import::google_drive::download_file(&req.access_token, file_id).await
+            }
+            "onedrive" => {
+                // OneDrive needs download URL from file metadata
+                Err("OneDrive import needs download URL".to_string())
+            }
+            _ => Err(format!("Unsupported provider: {}", req.provider)),
+        };
+
+        match content {
+            Ok(bytes) => {
+                // Encrypt and store (simple base64 for MVP)
+                let encrypted = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                let nonce = base64::engine::general_purpose::STANDARD
+                    .encode(uuid::Uuid::new_v4().to_string());
+
+                // Check quota and insert
+                let size_bytes = bytes.len() as f64;
+                let additional_gb = size_bytes / (1024.0 * 1024.0 * 1024.0);
+
+                let reserve = sqlx::query(
+                    "UPDATE users SET storage_used_gb = storage_used_gb + $1 WHERE id = $2 AND storage_used_gb + $1 <= storage_limit_gb"
+                )
+                .bind(additional_gb)
+                .bind(&user_id)
+                .execute(&state.db_pool)
+                .await;
+
+                if let Ok(res) = reserve {
+                    if res.rows_affected() > 0 {
+                        let entry_id = Uuid::new_v4().to_string();
+                        let now = Utc::now().to_rfc3339();
+
+                        let insert_res = sqlx::query(
+                            "INSERT INTO vault_entries (id, vault_id, entry_type, encrypted_content, nonce, file_size_bytes, created_at, updated_at) \
+                             VALUES ($1, $2, 'file', $3, $4, $5, $6, $6)"
+                        )
+                        .bind(&entry_id)
+                        .bind(&vault_id)
+                        .bind(encrypted.as_bytes())
+                        .bind(&nonce)
+                        .bind(bytes.len() as i32)
+                        .bind(&now)
+                        .execute(&state.db_pool)
+                        .await;
+
+                        if insert_res.is_ok() {
+                            imported_count += 1;
+                        } else {
+                            // Compensate
+                            let _ = sqlx::query(
+                                "UPDATE users SET storage_used_gb = storage_used_gb - $1 WHERE id = $2"
+                            )
+                            .bind(additional_gb)
+                            .bind(&user_id)
+                            .execute(&state.db_pool)
+                            .await;
+                            failed_count += 1;
+                        }
+                    } else {
+                        failed_count += 1; // quota exceeded
+                    }
+                } else {
+                    failed_count += 1;
+                }
+            }
+            Err(_) => {
+                failed_count += 1;
+            }
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "imported": imported_count,
+            "failed": failed_count,
+            "message": format!("Imported {} files, {} failed", imported_count, failed_count)
+        })),
+    )
+        .into_response()
+}
 // ============================================================================
 // AUTHENTICATION MIDDLEWARE
 // ============================================================================
@@ -930,6 +1100,9 @@ async fn main() {
         // Account API
         .route("/account/usage", get(get_usage_handler))
         .route("/account/upgrade", post(upgrade_enterprise_handler))
+        // Cloud import API
+        .route("/cloud/list", post(list_cloud_files_handler))
+        .route("/vaults/:vault_id/import", post(import_cloud_files_handler))
         // Vaults API
         .route("/vaults/create", post(create_vault_handler))
         .route("/vaults/list", get(list_vaults_handler))
