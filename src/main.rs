@@ -591,11 +591,6 @@ async fn seed_admin_user(pool: &AnyPool) {
         .await
         .unwrap_or(0);
 
-    if exists > 0 {
-        eprintln!("Admin user '{}' already exists; skipping seed", admin_username);
-        return;
-    }
-
     let (_key, salt) = match derive_key(&admin_password) {
         Ok(k) => k,
         Err(e) => {
@@ -620,6 +615,29 @@ async fn seed_admin_user(pool: &AnyPool) {
     let now = Utc::now().to_rfc3339();
     let subscription_tier = models::TIER_ENTERPRISE;
     let storage_limit_gb = models::ENTERPRISE_STORAGE_GB;
+
+    if exists > 0 {
+        // Update password hash, salt, and ensure Enterprise tier
+        let res = sqlx::query(
+            "UPDATE users SET password_hash = $1, encryption_key_salt = $2, subscription_tier = $3, storage_limit_gb = $4 WHERE username = $5"
+        )
+        .bind(&password_hash)
+        .bind(&salt)
+        .bind(subscription_tier)
+        .bind(storage_limit_gb)
+        .bind(&admin_username)
+        .execute(pool)
+        .await;
+
+        match res {
+            Ok(_) => eprintln!(
+                "✅ Updated admin user '{}' credentials and tier {} (limit {} GB)",
+                admin_username, subscription_tier, storage_limit_gb
+            ),
+            Err(e) => eprintln!("Failed to update admin user '{}': {}", admin_username, e),
+        }
+        return;
+    }
 
     let res = sqlx::query(
         "INSERT INTO users (id, username, password_hash, encryption_key_salt, subscription_tier, storage_limit_gb, storage_used_gb, created_at, updated_at) \
