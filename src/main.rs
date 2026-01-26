@@ -581,6 +581,117 @@ async fn health_handler() -> impl IntoResponse {
 }
 
 // ============================================================================
+// ACCOUNT USAGE & UPGRADE
+// ============================================================================
+
+async fn get_usage_handler(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let user_id = match authenticate(&state, &headers).await {
+        Some(uid) => uid,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
+            )
+                .into_response()
+        }
+    };
+
+    let usage = sqlx::query_as::<_, (f64, i32, String)>(
+        "SELECT storage_used_gb, storage_limit_gb, subscription_tier FROM users WHERE id = $1"
+    )
+    .bind(&user_id)
+    .fetch_one(&state.db_pool)
+    .await;
+
+    let (storage_used_gb, storage_limit_gb, subscription_tier) = match usage {
+        Ok(u) => u,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to fetch usage: {}", e)})),
+            )
+                .into_response()
+        }
+    };
+
+    let vault_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM vaults WHERE user_id = $1"
+    )
+    .bind(&user_id)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+    let entry_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM vault_entries WHERE vault_id IN (SELECT id FROM vaults WHERE user_id = $1)"
+    )
+    .bind(&user_id)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+    let resp = UsageResponse {
+        storage_used_gb,
+        storage_limit_gb,
+        subscription_tier,
+        vault_count: vault_count as i32,
+        entry_count: entry_count as i32,
+    };
+
+    (StatusCode::OK, Json(resp)).into_response()
+}
+
+async fn upgrade_enterprise_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user_id = match authenticate(&state, &headers).await {
+        Some(uid) => uid,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
+            )
+                .into_response()
+        }
+    };
+
+    let current_tier = sqlx::query_scalar::<_, String>(
+        "SELECT subscription_tier FROM users WHERE id = $1"
+    )
+    .bind(&user_id)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or_else(|_| models::TIER_STARTER.to_string());
+
+    if current_tier == models::TIER_ENTERPRISE {
+        return (StatusCode::OK, Json(json!({"message": "Already Enterprise"}))).into_response();
+    }
+
+    let limit = models::ENTERPRISE_STORAGE_GB;
+    let res = sqlx::query(
+        "UPDATE users SET subscription_tier = $1, storage_limit_gb = $2 WHERE id = $3"
+    )
+    .bind(models::TIER_ENTERPRISE)
+    .bind(limit)
+    .bind(&user_id)
+    .execute(&state.db_pool)
+    .await;
+
+    match res {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({"message": "Upgraded to Enterprise", "storage_limit_gb": limit})),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Upgrade failed: {}", e)})),
+        )
+            .into_response(),
+    }
+}
+// ============================================================================
 // AUTHENTICATION MIDDLEWARE
 // ============================================================================
 
@@ -731,6 +842,9 @@ async fn main() {
         // Auth API
         .route("/auth/register", post(register_handler))
         .route("/auth/login", post(login_handler))
+        // Account API
+        .route("/account/usage", get(get_usage_handler))
+        .route("/account/upgrade", post(upgrade_enterprise_handler))
         // Vaults API
         .route("/vaults/create", post(create_vault_handler))
         .route("/vaults/list", get(list_vaults_handler))

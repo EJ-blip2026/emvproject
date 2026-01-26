@@ -217,6 +217,31 @@
         }
         .tab.active { background: rgba(246,196,82,0.12); border-color: var(--accent); color: #fefce8; }
         .hidden { display: none; }
+        .usage-panel {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
+            align-items: center;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.03);
+            margin-bottom: 12px;
+        }
+        .usage-bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .usage-fill {
+            height: 100%;
+            background: linear-gradient(120deg, var(--accent), #f3b942, #f6c452);
+            border-radius: 999px;
+            width: 0%;
+        }
+        .upgrade-btn { width: auto; }
         .tier-selector { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
         .tier-card {
             padding: 16px;
@@ -314,6 +339,13 @@
                 <div id="vaultMessage"></div>
                 
                 <div id="listTab">
+                    <div id="usagePanel" class="usage-panel hidden">
+                        <div>
+                            <div id="usageText" style="margin-bottom: 8px; font-weight: 600;"></div>
+                            <div class="usage-bar"><div id="usageFill" class="usage-fill"></div></div>
+                        </div>
+                        <button id="upgradeBtn" class="btn-secondary upgrade-btn hidden" onclick="upgradeToEnterprise()">Upgrade to Enterprise</button>
+                    </div>
                     <h2 style="margin-bottom: 15px;">Your Vaults</h2>
                     <div class="vault-list" id="vaultList"></div>
                 </div>
@@ -416,6 +448,7 @@
                 document.getElementById('authSection').classList.add('active');
             } else {
                 document.getElementById('vaultSection').classList.add('active');
+                loadUsage();
             }
         }
 
@@ -533,6 +566,8 @@
             } catch (err) {
                 showMessage('vaultMessage', 'Network error: ' + err.message, 'error');
             }
+            // Refresh usage panel after loading vaults
+            loadUsage();
         }
 
         async function createVault() {
@@ -607,6 +642,7 @@
                     showMessage('vaultMessage', 'Note saved!', 'success');
                     document.getElementById('noteContent').value = '';
                     loadNotes();
+                    loadUsage();
                 } else {
                     showMessage('vaultMessage', data.error || 'Failed to save note', 'error');
                 }
@@ -714,11 +750,63 @@
                     showMessage('vaultMessage', 'File uploaded successfully!', 'success');
                     fileInput.value = '';
                     loadNotes();
+                    loadUsage();
                 } else {
                     showMessage('vaultMessage', data.error || 'Failed to upload file', 'error');
                 }
             } catch (err) {
                 showMessage('vaultMessage', 'Upload error: ' + err.message, 'error');
+            }
+        }
+
+        async function loadUsage() {
+            if (!authToken) return;
+            try {
+                const response = await fetch(`${API_URL}/account/usage`, {
+                    headers: {'Authorization': `Bearer ${authToken}`}
+                });
+                const data = await response.json();
+                const panel = document.getElementById('usagePanel');
+                const text = document.getElementById('usageText');
+                const fill = document.getElementById('usageFill');
+                const upgradeBtn = document.getElementById('upgradeBtn');
+
+                if (response.ok) {
+                    panel.classList.remove('hidden');
+                    const used = (data.storage_used_gb || 0).toFixed(3);
+                    const limit = data.storage_limit_gb || 0;
+                    const pct = Math.min(100, Math.round((used / limit) * 100));
+                    text.textContent = `Plan: ${data.subscription_tier} · Usage: ${used} GB / ${limit} GB`;
+                    fill.style.width = pct + '%';
+                    if (data.subscription_tier !== 'Enterprise') {
+                        upgradeBtn.classList.remove('hidden');
+                    } else {
+                        upgradeBtn.classList.add('hidden');
+                    }
+                } else {
+                    panel.classList.add('hidden');
+                }
+            } catch (err) {
+                // Hide panel on error
+                document.getElementById('usagePanel').classList.add('hidden');
+            }
+        }
+
+        async function upgradeToEnterprise() {
+            try {
+                const response = await fetch(`${API_URL}/account/upgrade`, {
+                    method: 'POST',
+                    headers: {'Authorization': `Bearer ${authToken}`}
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showMessage('vaultMessage', 'Upgraded to Enterprise!', 'success');
+                    loadUsage();
+                } else {
+                    showMessage('vaultMessage', data.error || 'Upgrade failed', 'error');
+                }
+            } catch (err) {
+                showMessage('vaultMessage', 'Upgrade error: ' + err.message, 'error');
             }
         }
         
