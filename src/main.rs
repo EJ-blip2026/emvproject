@@ -328,33 +328,69 @@ async fn create_note_handler(
             }
         };
 
-    let entry_id = Uuid::new_v4().to_string();
-    let now = Utc::now().to_rfc3339();
+        // Enforce storage quota: reserve then insert, with compensation on failure
+        let size_bytes = encrypted_content.len() as f64;
+        let additional_gb = size_bytes / (1024.0 * 1024.0 * 1024.0);
 
-    let result = sqlx::query(
-        "INSERT INTO vault_entries (id, vault_id, entry_type, encrypted_content, nonce, file_size_bytes, created_at, updated_at) 
-         VALUES ($1, $2, 'note', $3, $4, NULL, $5, $5)"
-    )
-    .bind(&entry_id)
-    .bind(&vault_id)
-    .bind(&encrypted_content)
-    .bind(&req.nonce)
-    .bind(&now)
-    .execute(&state.db_pool)
-    .await;
+        let reserve = sqlx::query(
+            "UPDATE users SET storage_used_gb = storage_used_gb + $1 WHERE id = $2 AND storage_used_gb + $1 <= storage_limit_gb"
+        )
+        .bind(additional_gb)
+        .bind(&user_id)
+        .execute(&state.db_pool)
+        .await;
 
-    match result {
-        Ok(_) => (
-            StatusCode::CREATED,
-            Json(json!({"entry_id": entry_id, "message": "Note created"})),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Failed to create note: {}", e)})),
-        )
-            .into_response(),
-    }
+        match reserve {
+            Ok(res) if res.rows_affected() > 0 => {
+                let entry_id = Uuid::new_v4().to_string();
+                let now = Utc::now().to_rfc3339();
+
+                let insert_res = sqlx::query(
+                    "INSERT INTO vault_entries (id, vault_id, entry_type, encrypted_content, nonce, file_size_bytes, created_at, updated_at) \
+                     VALUES ($1, $2, 'note', $3, $4, NULL, $5, $5)"
+                )
+                .bind(&entry_id)
+                .bind(&vault_id)
+                .bind(&encrypted_content)
+                .bind(&req.nonce)
+                .bind(&now)
+                .execute(&state.db_pool)
+                .await;
+
+                match insert_res {
+                    Ok(_) => (
+                        StatusCode::CREATED,
+                        Json(json!({"entry_id": entry_id, "message": "Note created"})),
+                    )
+                        .into_response(),
+                    Err(e) => {
+                        // compensate reserved usage
+                        let _ = sqlx::query(
+                            "UPDATE users SET storage_used_gb = storage_used_gb - $1 WHERE id = $2"
+                        )
+                        .bind(additional_gb)
+                        .bind(&user_id)
+                        .execute(&state.db_pool)
+                        .await;
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({"error": format!("Failed to create note: {}", e)})),
+                        )
+                            .into_response()
+                    }
+                }
+            }
+            Ok(_) => (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Storage limit exceeded"})),
+            )
+                .into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to check quota: {}", e)})),
+            )
+                .into_response(),
+        }
 }
 
 async fn upload_file_handler(
@@ -401,31 +437,67 @@ async fn upload_file_handler(
         }
     };
 
-    let entry_id = Uuid::new_v4().to_string();
-    let now = Utc::now().to_rfc3339();
+    // Enforce storage quota: reserve then insert, with compensation on failure
+    let size_bytes = encrypted_content.len() as f64;
+    let additional_gb = size_bytes / (1024.0 * 1024.0 * 1024.0);
 
-    let result = sqlx::query(
-        "INSERT INTO vault_entries (id, vault_id, entry_type, encrypted_content, nonce, file_size_bytes, created_at, updated_at) \
-         VALUES ($1, $2, 'file', $3, $4, $5, $6, $6)"
+    let reserve = sqlx::query(
+        "UPDATE users SET storage_used_gb = storage_used_gb + $1 WHERE id = $2 AND storage_used_gb + $1 <= storage_limit_gb"
     )
-    .bind(&entry_id)
-    .bind(&vault_id)
-    .bind(&encrypted_content)
-    .bind(&req.nonce)
-    .bind(req.file_size_bytes)
-    .bind(&now)
+    .bind(additional_gb)
+    .bind(&user_id)
     .execute(&state.db_pool)
     .await;
 
-    match result {
+    match reserve {
+        Ok(res) if res.rows_affected() > 0 => {
+            let entry_id = Uuid::new_v4().to_string();
+            let now = Utc::now().to_rfc3339();
+
+            let insert_res = sqlx::query(
+                "INSERT INTO vault_entries (id, vault_id, entry_type, encrypted_content, nonce, file_size_bytes, created_at, updated_at) \
+                 VALUES ($1, $2, 'file', $3, $4, $5, $6, $6)"
+            )
+            .bind(&entry_id)
+            .bind(&vault_id)
+            .bind(&encrypted_content)
+            .bind(&req.nonce)
+            .bind(req.file_size_bytes)
+            .bind(&now)
+            .execute(&state.db_pool)
+            .await;
+
+            match insert_res {
+                Ok(_) => (
+                    StatusCode::CREATED,
+                    Json(json!({"entry_id": entry_id, "message": "File stored"})),
+                )
+                    .into_response(),
+                Err(e) => {
+                    // compensate reserved usage
+                    let _ = sqlx::query(
+                        "UPDATE users SET storage_used_gb = storage_used_gb - $1 WHERE id = $2"
+                    )
+                    .bind(additional_gb)
+                    .bind(&user_id)
+                    .execute(&state.db_pool)
+                    .await;
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("Failed to save file: {}", e)})),
+                    )
+                        .into_response()
+                }
+            }
+        }
         Ok(_) => (
-            StatusCode::CREATED,
-            Json(json!({"entry_id": entry_id, "message": "File stored"})),
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Storage limit exceeded"})),
         )
             .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Failed to save file: {}", e)})),
+            Json(json!({"error": format!("Failed to check quota: {}", e)})),
         )
             .into_response(),
     }
