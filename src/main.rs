@@ -580,6 +580,70 @@ async fn health_handler() -> impl IntoResponse {
         .into_response()
 }
 
+// Seed a free admin account (Enterprise tier) if configured and not already present
+async fn seed_admin_user(pool: &AnyPool) {
+    let admin_username = env::var("ADMIN_USERNAME").unwrap_or_else(|_| "admin".to_string());
+    let admin_password = env::var("ADMIN_PASSWORD").unwrap_or_else(|_| "change_me_admin".to_string());
+
+    let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE username = $1")
+        .bind(&admin_username)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+    if exists > 0 {
+        eprintln!("Admin user '{}' already exists; skipping seed", admin_username);
+        return;
+    }
+
+    let (_key, salt) = match derive_key(&admin_password) {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!("Failed to derive key for admin user: {}", e);
+            return;
+        }
+    };
+
+    let password_hash = match argon2::password_hash::PasswordHasher::hash_password(
+        &argon2::Argon2::default(),
+        admin_password.as_bytes(),
+        &argon2::password_hash::SaltString::generate(rand::thread_rng()),
+    ) {
+        Ok(h) => h.to_string(),
+        Err(e) => {
+            eprintln!("Failed to hash admin password: {}", e);
+            return;
+        }
+    };
+
+    let user_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    let subscription_tier = models::TIER_ENTERPRISE;
+    let storage_limit_gb = models::ENTERPRISE_STORAGE_GB;
+
+    let res = sqlx::query(
+        "INSERT INTO users (id, username, password_hash, encryption_key_salt, subscription_tier, storage_limit_gb, storage_used_gb, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $7)"
+    )
+    .bind(&user_id)
+    .bind(&admin_username)
+    .bind(&password_hash)
+    .bind(&salt)
+    .bind(subscription_tier)
+    .bind(storage_limit_gb)
+    .bind(&now)
+    .execute(pool)
+    .await;
+
+    match res {
+        Ok(_) => eprintln!(
+            "✅ Seeded admin user '{}' with tier {} (limit {} GB)",
+            admin_username, subscription_tier, storage_limit_gb
+        ),
+        Err(e) => eprintln!("Failed to seed admin user '{}': {}", admin_username, e),
+    }
+}
+
 // ============================================================================
 // ACCOUNT USAGE & UPGRADE
 // ============================================================================
@@ -827,6 +891,9 @@ async fn main() {
         migration_result.expect("migrations failed");
     }
     println!("Migrations applied.");
+
+    // Seed a free admin Enterprise account if configured
+    seed_admin_user(&pool).await;
 
     let _admin_token = env::var("ADMIN_TOKEN").unwrap_or_else(|_| "admintoken".to_string());
 
