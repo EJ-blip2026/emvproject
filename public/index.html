@@ -196,6 +196,14 @@
             border-radius: 10px;
             margin-bottom: 12px;
         }
+        .warning {
+            background: rgba(251,191,36,0.08);
+            color: #fbbf24;
+            border: 1px solid rgba(251,191,36,0.25);
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 12px;
+        }
         .success {
             background: rgba(74,222,128,0.08);
             color: #bbf7d0;
@@ -773,11 +781,18 @@
 
                 if (response.ok) {
                     panel.classList.remove('hidden');
-                    const used = (data.storage_used_gb || 0).toFixed(3);
+                    const usedNum = data.storage_used_gb || 0;
+                    const used = usedNum.toFixed(3);
                     const limit = data.storage_limit_gb || 0;
-                    const pct = Math.min(100, Math.round((used / limit) * 100));
+                    const pct = limit > 0 ? Math.min(100, Math.round((usedNum / limit) * 100)) : 0;
                     text.textContent = `Plan: ${data.subscription_tier} · Usage: ${used} GB / ${limit} GB`;
                     fill.style.width = pct + '%';
+                    fill.style.background = pct >= 90
+                        ? 'linear-gradient(120deg, #f97316, #ef4444)'
+                        : 'linear-gradient(120deg, var(--accent), #f3b942, #f6c452)';
+                    if (pct >= 90) {
+                        showMessage('vaultMessage', `Warning: ${pct}% of storage used. Consider upgrading.`, 'warning');
+                    }
                     if (data.subscription_tier !== 'Enterprise') {
                         upgradeBtn.classList.remove('hidden');
                     } else {
