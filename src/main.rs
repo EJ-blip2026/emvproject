@@ -435,9 +435,20 @@ async fn passkey_register_verify_handler(
     }
 
     // Step 9: Extract credential public key from authData
-    // Credential data format: credentialId (2 bytes length + variable) | credentialPublicKey (CBOR)
+    // Credential data format: AAGUID (16 bytes) | credIdLen (2 bytes) | credId | credentialPublicKey (CBOR)
     let mut pos = 37;
     
+    // Skip AAGUID (16 bytes)
+    if auth_data_bytes.len() < pos + 16 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Authenticator data truncated at AAGUID"})),
+        )
+            .into_response();
+    }
+    pos += 16;
+    
+    // Read credential ID length (2 bytes, big-endian)
     if auth_data_bytes.len() < pos + 2 {
         return (
             StatusCode::BAD_REQUEST,
