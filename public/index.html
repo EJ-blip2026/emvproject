@@ -265,6 +265,118 @@
         .tier-card h4 { margin-bottom: 8px; color: var(--text); }
         .tier-price { color: var(--accent); font-weight: 700; margin: 8px 0; font-size: 18px; }
         .tier-storage { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+        /* Upgrade Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-content {
+            background: linear-gradient(160deg, rgba(15,23,42,0.98), rgba(12,20,39,0.95));
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 40px 160px rgba(0,0,0,0.6);
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(40px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .modal-header h2 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .modal-features {
+            display: grid;
+            gap: 14px;
+            margin: 24px 0;
+        }
+        .feature-item {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 14px;
+            background: rgba(74,222,128,0.05);
+            border: 1px solid rgba(74,222,128,0.1);
+            border-radius: 12px;
+        }
+        .feature-item-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .feature-item-text {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .feature-item-text strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+        .feature-item-text p {
+            color: var(--muted);
+            font-size: 13px;
+            margin: 0;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 28px;
+        }
+        .modal-actions button {
+            flex: 1;
+            margin: 0;
+        }
+        .modal-actions .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+        }
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            width: auto;
+            box-shadow: none;
+        }
+        .modal-close:hover {
+            color: var(--text);
+            transform: scale(1.1);
+        }
+        .modal-subheader {
+            color: var(--muted);
+            font-size: 16px;
+            margin-bottom: 8px;
+            margin-top: -8px;
+        }
     </style>
 </head>
 <body>
@@ -404,8 +516,8 @@
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
                             <button class="btn-secondary" onclick="connectGoogleDrive()">📁 Google Drive</button>
                             <button class="btn-secondary" onclick="connectOneDrive()">☁️ OneDrive</button>
-                            <button class="btn-secondary" onclick="alert('iCloud not yet supported')">🍎 iCloud (Soon)</button>
-                            <button class="btn-secondary" onclick="alert('S3 coming soon')">📦 AWS S3 (Soon)</button>
+                            <button class="btn-secondary" onclick="showUpgradeModal()">🍎 iCloud (Soon)</button>
+                            <button class="btn-secondary" onclick="showUpgradeModal()">📦 AWS S3 (Soon)</button>
                         </div>
                         <div id="cloudFileList" class="hidden" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: rgba(255,255,255,0.02);">
                             <h4 style="margin-bottom: 10px;">Select files to import:</h4>
@@ -1275,6 +1387,74 @@
                 </div>
             `;
         }
+        function showUpgradeModal() {
+            const modal = document.getElementById('upgradeModal');
+            modal.classList.add('active');
+        }
+
+        function closeUpgradeModal() {
+            const modal = document.getElementById('upgradeModal');
+            modal.classList.remove('active');
+        }
+
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('upgradeModal');
+            if (event.target === modal) {
+                closeUpgradeModal();
+            }
+        });
     </script>
+
+    <!-- Upgrade to Pro Modal -->
+    <div class="modal-overlay" id="upgradeModal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeUpgradeModal()">✕</button>
+            <div class="modal-header">
+                <span style="font-size: 32px;">✨</span>
+                <h2>Unlock Absolute Sovereignty</h2>
+            </div>
+            <p class="modal-subheader">You're currently using the Community Edition of the EMV Vault. Upgrade to Pro to bridge your security across all your platforms.</p>
+            
+            <div class="modal-features">
+                <div class="feature-item">
+                    <div class="feature-item-icon">🌐</div>
+                    <div class="feature-item-text">
+                        <strong>Automated Cloud Hardening</strong>
+                        <p>Encrypt files automatically before they sync to Google Drive or OneDrive.</p>
+                    </div>
+                </div>
+                
+                <div class="feature-item">
+                    <div class="feature-item-icon">🔮</div>
+                    <div class="feature-item-text">
+                        <strong>Quantum-Resistant Storage</strong>
+                        <p>Upgrade your vault to lattice-based cryptography for future-proof security.</p>
+                    </div>
+                </div>
+                
+                <div class="feature-item">
+                    <div class="feature-item-icon">⚡</div>
+                    <div class="feature-item-text">
+                        <strong>Priority Infrastructure</strong>
+                        <p>Faster upload/download speeds via dedicated high-speed Axum relays.</p>
+                    </div>
+                </div>
+                
+                <div class="feature-item">
+                    <div class="feature-item-icon">🔑</div>
+                    <div class="feature-item-text">
+                        <strong>Zero-Knowledge Recovery</strong>
+                        <p>Set up a "Social Recovery" contact so you never lose access to your keys.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button onclick="closeUpgradeModal()" class="btn-secondary">Not Now</button>
+                <button onclick="upgradeToEnterprise()" style="background: linear-gradient(120deg, var(--accent), #f3b942); color: #0a0f1d; font-weight: 700;">Upgrade to Pro</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
