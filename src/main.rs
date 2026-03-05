@@ -271,10 +271,10 @@ async fn passkey_register_verify_handler(
         .await
     {
         Ok(challenge) => challenge,
-        Err(_) => {
+        Err(e) => {
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Challenge verification failed or expired"})),
+                Json(json!({"error": format!("Challenge verification failed: {}", e)})),
             )
                 .into_response()
         }

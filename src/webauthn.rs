@@ -84,21 +84,37 @@ pub async fn verify_registration_challenge(
     challenge_id: &str,
     user_id: &str,
 ) -> Result<Vec<u8>, String> {
-    let now = Utc::now().to_rfc3339();
+    let now = Utc::now();
 
-    let result = sqlx::query_scalar::<_, Vec<u8>>(
-        "SELECT challenge FROM webauthn_registration_challenges \
-         WHERE id = $1 AND user_id = $2 AND expires_at > $3"
+    let result = sqlx::query_as::<_, (Vec<u8>, String, String)>(
+        "SELECT challenge, user_id, expires_at FROM webauthn_registration_challenges WHERE id = $1"
     )
     .bind(challenge_id)
-    .bind(user_id)
-    .bind(&now)
     .fetch_optional(pool)
     .await
     .map_err(|e| format!("Challenge lookup failed: {}", e))?;
 
     match result {
-        Some(challenge) => {
+        Some((challenge, challenge_user_id, expires_at_str)) => {
+            if challenge_user_id != user_id {
+                return Err("Challenge belongs to a different account".to_string());
+            }
+
+            let expires_at = chrono::DateTime::parse_from_rfc3339(&expires_at_str)
+                .map_err(|_| "Stored challenge expiry is invalid".to_string())?
+                .with_timezone(&Utc);
+
+            if expires_at <= now {
+                let _ = sqlx::query(
+                    "DELETE FROM webauthn_registration_challenges WHERE id = $1"
+                )
+                .bind(challenge_id)
+                .execute(pool)
+                .await;
+
+                return Err("Challenge expired".to_string());
+            }
+
             // Clean up challenge
             let _ = sqlx::query(
                 "DELETE FROM webauthn_registration_challenges WHERE id = $1"
@@ -108,7 +124,7 @@ pub async fn verify_registration_challenge(
             .await;
             Ok(challenge)
         }
-        None => Err("Challenge not found or expired".to_string()),
+        None => Err("Challenge not found".to_string()),
     }
 }
 
@@ -173,20 +189,33 @@ pub async fn verify_authentication_challenge(
     pool: &AnyPool,
     challenge_id: &str,
 ) -> Result<Vec<u8>, String> {
-    let now = Utc::now().to_rfc3339();
+    let now = Utc::now();
 
-    let result = sqlx::query_scalar::<_, Vec<u8>>(
-        "SELECT challenge FROM webauthn_authentication_challenges \
-         WHERE id = $1 AND expires_at > $2"
+    let result = sqlx::query_as::<_, (Vec<u8>, String)>(
+        "SELECT challenge, expires_at FROM webauthn_authentication_challenges WHERE id = $1"
     )
     .bind(challenge_id)
-    .bind(&now)
     .fetch_optional(pool)
     .await
     .map_err(|e| format!("Auth challenge lookup failed: {}", e))?;
 
     match result {
-        Some(challenge) => {
+        Some((challenge, expires_at_str)) => {
+            let expires_at = chrono::DateTime::parse_from_rfc3339(&expires_at_str)
+                .map_err(|_| "Stored auth challenge expiry is invalid".to_string())?
+                .with_timezone(&Utc);
+
+            if expires_at <= now {
+                let _ = sqlx::query(
+                    "DELETE FROM webauthn_authentication_challenges WHERE id = $1"
+                )
+                .bind(challenge_id)
+                .execute(pool)
+                .await;
+
+                return Err("Auth challenge expired".to_string());
+            }
+
             // Clean up challenge
             let _ = sqlx::query(
                 "DELETE FROM webauthn_authentication_challenges WHERE id = $1"
@@ -196,7 +225,7 @@ pub async fn verify_authentication_challenge(
             .await;
             Ok(challenge)
         }
-        None => Err("Auth challenge not found or expired".to_string()),
+        None => Err("Auth challenge not found".to_string()),
     }
 }
 
