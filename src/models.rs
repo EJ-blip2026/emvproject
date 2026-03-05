@@ -231,9 +231,10 @@ pub struct PasskeyRegisterBeginResponse {
 pub struct PasskeyRegisterVerifyRequest {
     pub user_id: String,
     pub challenge_id: String,
-    pub credential_id: String, // Base64
-    pub public_key: String,    // Base64 encoded CBOR
-    pub transports: Option<Vec<String>>, // ["usb", "internal", etc]
+    pub credential_id: String,        // Base64
+    pub attestation_object: String,   // Base64 encoded attestation
+    pub client_data_json: String,     // Base64 encoded client data
+    pub transports: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]

@@ -31,6 +31,7 @@ rustls-pemfile = "1.0"
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
 webauthn-rs = "0.4"
 webauthn-rs-proto = "0.4"
+serde_cbor = "0.11"
 
 # Cryptography for zero-knowledge vault
 argon2 = "0.5"

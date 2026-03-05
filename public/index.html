@@ -1338,6 +1338,9 @@
                 }
 
                 // Step 3: Send credential to server for verification and storage
+                const attestationObject = credential.response.attestationObject;
+                const clientDataJSON = credential.response.clientDataJSON;
+                
                 const verifyResponse = await fetch(`${API_URL}/auth/register-passkey-verify`, {
                     method: 'POST',
                     headers: {
@@ -1345,10 +1348,11 @@
                         'Authorization': `Bearer ${authToken}`
                     },
                     body: JSON.stringify({
-                        user_id: authToken.split('-')[0], // Simplified user ID extraction
+                        user_id: authToken.split('-')[0],
                         challenge_id: beginData.challenge_id,
                         credential_id: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
-                        public_key: btoa(String.fromCharCode(...new Uint8Array(credential.response.getPublicKey()))),
+                        attestation_object: btoa(String.fromCharCode(...new Uint8Array(attestationObject))),
+                        client_data_json: btoa(String.fromCharCode(...new Uint8Array(clientDataJSON))),
                         transports: credential.response.getTransports ? credential.response.getTransports() : []
                     })
                 });

@@ -258,78 +258,255 @@ async fn passkey_register_verify_handler(
     headers: HeaderMap,
     Json(req): Json<PasskeyRegisterVerifyRequest>,
 ) -> impl IntoResponse {
-    // Verify the challenge exists and hasn't expired
-    match webauthn::verify_registration_challenge(&state.db_pool, &req.challenge_id, &req.user_id)
+    use webauthn_rs::prelude::*;
+    use serde::{Deserialize};
+    
+    // Step 1: Verify the challenge exists and hasn't expired, and retrieve it
+    let challenge_bytes = match webauthn::verify_registration_challenge(&state.db_pool, &req.challenge_id, &req.user_id)
         .await
     {
-        Ok(_) => {
-            // Decode the public_key from base64
-            let public_key_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.public_key) {
-                Ok(b) => b,
-                Err(_) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({"error": "Invalid public key encoding"})),
-                    )
-                        .into_response()
-                }
-            };
-
-            let credential_id_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.credential_id) {
-                Ok(b) => b,
-                Err(_) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({"error": "Invalid credential_id encoding"})),
-                    )
-                        .into_response()
-                }
-            };
-
-            // Store credential
-            match webauthn::store_credential(
-                &state.db_pool,
-                &req.user_id,
-                credential_id_bytes,
-                public_key_bytes,
-                Some(req.transports.unwrap_or_default()),
+        Ok(challenge) => challenge,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Challenge verification failed or expired"})),
             )
-            .await
-            {
-                Ok(_) => {
-                    let ip = extract_ip(&headers);
-                    log_audit(
-                        &state,
-                        &req.user_id,
-                        "passkey_enrolled",
-                        Some("credential"),
-                        Some(&req.credential_id),
-                        ip.as_deref(),
-                        None,
-                    )
-                    .await;
+                .into_response()
+        }
+    };
 
-                    (
-                        StatusCode::OK,
-                        Json(json!({
-                            "success": true,
-                            "credential_id": req.credential_id
-                        })),
+    // Step 2: Decode attestation object and client data JSON from base64
+    let attestation_object_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.attestation_object) {
+        Ok(b) => b,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid attestation_object encoding"})),
+            )
+                .into_response()
+        }
+    };
+
+    let client_data_json_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.client_data_json) {
+        Ok(b) => b,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid client_data_json encoding"})),
+            )
+                .into_response()
+        }
+    };
+
+    let credential_id_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.credential_id) {
+        Ok(b) => b,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid credential_id encoding"})),
+            )
+                .into_response()
+        }
+    };
+
+    // Step 3: Decode and verify client data JSON structure
+    #[derive(Deserialize)]
+    struct ClientData {
+        challenge: String,
+        origin: String,
+        #[serde(rename = "type")]
+        ty: String,
+    }
+    
+    let client_data: ClientData = match serde_json::from_slice(&client_data_json_bytes) {
+        Ok(data) => data,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("Invalid client data JSON: {}", e)})),
+            )
+                .into_response()
+        }
+    };
+
+    // Step 4: Verify the challenge matches what we stored (base64url encoded)
+    let expected_challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&challenge_bytes);
+    if client_data.challenge != expected_challenge {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Challenge mismatch - potential replay attack"})),
+        )
+            .into_response();
+    }
+
+    if client_data.ty != "webauthn.create" {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid client data type"})),
+        )
+            .into_response();
+    }
+
+    // Step 5: Verify origin (check host matches)
+    let hostname = std::env::var("DOMAIN").unwrap_or_else(|_| "localhost:3000".to_string());
+    let expected_origin = format!("https://{}", hostname);
+    if !client_data.origin.starts_with(&expected_origin) && !client_data.origin.contains("localhost") {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": format!("Origin mismatch: got {}, expected {}", client_data.origin, expected_origin)})),
+        )
+            .into_response();
+    }
+
+    // Step 6: Decode attestation object (CBOR format)
+    let attestation_obj: serde_cbor::Value = match serde_cbor::from_slice(&attestation_object_bytes) {
+        Ok(obj) => obj,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("Failed to parse attestation object: {}", e)})),
+            )
+                .into_response()
+        }
+    };
+
+    // Step 7: Extract authData from attestation object
+    let auth_data_bytes = match &attestation_obj {
+        serde_cbor::Value::Map(map) => {
+            let key = serde_cbor::Value::Text("authData".to_string());
+            match map.get(&key) {
+                Some(serde_cbor::Value::Bytes(bytes)) => bytes.clone(),
+                _ => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "Missing or invalid authData in attestation object"})),
                     )
                         .into_response()
                 }
-                Err(_) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Failed to store credential"})),
-                )
-                    .into_response(),
             }
         }
-        Err(_) => (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Challenge verification failed or expired"})),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Attestation object is not a map"})),
+            )
+                .into_response()
+        }
+    };
+
+    // Step 8: Parse authenticator data (first 37 bytes are fixed, remainder is credential data)
+    // Format: rpIdHash (32 bytes) | flags (1 byte) | signCount (4 bytes) | [credentialData]
+    if auth_data_bytes.len() < 37 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Authenticator data too short"})),
         )
-            .into_response(),
+            .into_response();
+    }
+
+    let flags = auth_data_bytes[32];
+    let has_credential_data = (flags & 0x40) != 0; // Bit 6 = attested credential data included
+    let has_user_verified = (flags & 0x04) != 0; // Bit 2 = user verified
+
+    if !has_credential_data {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Authenticator data missing credential data"})),
+        )
+            .into_response();
+    }
+
+    // Step 9: Extract credential public key from authData
+    // Credential data format: credentialId (2 bytes length + variable) | credentialPublicKey (CBOR)
+    let mut pos = 37;
+    
+    if auth_data_bytes.len() < pos + 2 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Authenticator data truncated at credentialId length"})),
+        )
+            .into_response();
+    }
+
+    let cred_id_len = u16::from_be_bytes([auth_data_bytes[pos], auth_data_bytes[pos + 1]]) as usize;
+    pos += 2;
+
+    if auth_data_bytes.len() < pos + cred_id_len {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Authenticator data truncated at credentialId"})),
+        )
+            .into_response();
+    }
+
+    let _stored_cred_id = &auth_data_bytes[pos..pos + cred_id_len];
+    pos += cred_id_len;
+
+    // Extract public key (CBOR encoded)
+    let public_key_bytes = &auth_data_bytes[pos..];
+    let public_key_cbor: serde_cbor::Value = match serde_cbor::from_slice(public_key_bytes) {
+        Ok(pk) => pk,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("Failed to parse public key: {}", e)})),
+            )
+                .into_response()
+        }
+    };
+
+    // Re-encode public key to get perfect CBOR bytes (normalized)
+    let public_key_cbor_bytes = match serde_cbor::to_vec(&public_key_cbor) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to serialize public key: {}", e)})),
+            )
+                .into_response()
+        }
+    };
+
+    // Step 10: Store the verified credential
+    match webauthn::store_credential(
+        &state.db_pool,
+        &req.user_id,
+        credential_id_bytes.clone(),
+        public_key_cbor_bytes,
+        Some(req.transports.unwrap_or_default()),
+    )
+    .await
+    {
+        Ok(_) => {
+            let ip = extract_ip(&headers);
+            log_audit(
+                &state,
+                &req.user_id,
+                "passkey_enrolled",
+                Some("credential"),
+                Some(&req.credential_id),
+                ip.as_deref(),
+                None,
+            )
+            .await;
+
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "credential_id": req.credential_id,
+                    "message": "Passkey verified and stored"
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to store credential: {}", e)})),
+            )
+                .into_response()
+        }
     }
 }
 
