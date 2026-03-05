@@ -353,9 +353,23 @@ async fn passkey_register_verify_handler(
     }
 
     // Step 5: Verify origin (check host matches)
-    let hostname = std::env::var("DOMAIN").unwrap_or_else(|_| "localhost:3000".to_string());
-    let expected_origin = format!("https://{}", hostname);
-    if !client_data.origin.starts_with(&expected_origin) && !client_data.origin.contains("localhost") {
+    // Railway provides RAILWAY_PUBLIC_DOMAIN or we can extract from the request
+    let expected_origin = if let Ok(domain) = std::env::var("RAILWAY_PUBLIC_DOMAIN") {
+        format!("https://{}", domain)
+    } else if let Ok(domain) = std::env::var("DOMAIN") {
+        format!("https://{}", domain)
+    } else {
+        // Fallback: accept localhost for development
+        "http://localhost:3000".to_string()
+    };
+    
+    // Accept the expected origin or any localhost variant (for dev)
+    let origin_valid = client_data.origin == expected_origin
+        || client_data.origin.contains("localhost")
+        || client_data.origin.contains("127.0.0.1")
+        || client_data.origin.contains("emvproject-production.up.railway.app");
+    
+    if !origin_valid {
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": format!("Origin mismatch: got {}, expected {}", client_data.origin, expected_origin)})),
