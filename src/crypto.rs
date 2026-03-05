@@ -1,12 +1,19 @@
 // Zero-Knowledge Vault Backend
 // Handles encrypted storage, key derivation, and sharing
 
-use argon2::password_hash::SaltString;
-use argon2::Argon2;
+use argon2::{
+    password_hash::{rand_core::OsRng, SaltString, PasswordHasher},
+    Argon2, Params,
+};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use rand::Rng;
 use std::fmt;
+
+// Security hardening constants for Argon2id.
+const M_COST: u32 = 65536; // 64 MB
+const T_COST: u32 = 3; // 3 iterations
+const P_COST: u32 = 4; // parallelism
 
 #[derive(Debug)]
 pub enum CryptoError {
@@ -33,11 +40,13 @@ impl std::error::Error for CryptoError {}
 /// Returns (key: [u8; 32], salt: String)
 pub fn derive_key(password: &str) -> Result<([u8; 32], String), CryptoError> {
     // Generate random salt
-    let salt = SaltString::generate(rand::thread_rng());
+    let salt = SaltString::generate(&mut OsRng);
     let salt_str = salt.to_string();
 
     // Derive a 32-byte key directly into the buffer
-    let argon2 = Argon2::default();
+    let params = Params::new(M_COST, T_COST, P_COST, None)
+        .map_err(|_| CryptoError::KeyDerivationFailed)?;
+    let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let mut key_bytes = [0u8; 32];
     argon2
         .hash_password_into(
@@ -55,7 +64,9 @@ pub fn derive_key(password: &str) -> Result<([u8; 32], String), CryptoError> {
 pub fn verify_password(password: &str, salt_str: &str) -> Result<[u8; 32], CryptoError> {
     let salt = SaltString::from_b64(salt_str).map_err(|_| CryptoError::KeyDerivationFailed)?;
 
-    let argon2 = Argon2::default();
+    let params = Params::new(M_COST, T_COST, P_COST, None)
+        .map_err(|_| CryptoError::KeyDerivationFailed)?;
+    let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let mut key_bytes = [0u8; 32];
     argon2
         .hash_password_into(
@@ -66,6 +77,18 @@ pub fn verify_password(password: &str, salt_str: &str) -> Result<[u8; 32], Crypt
         .map_err(|_| CryptoError::KeyDerivationFailed)?;
 
     Ok(key_bytes)
+}
+
+pub fn hash_vault_key(key: &str) -> Result<String, CryptoError> {
+    let salt = SaltString::generate(&mut OsRng);
+    let params = Params::new(M_COST, T_COST, P_COST, None)
+        .map_err(|_| CryptoError::KeyDerivationFailed)?;
+    let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+
+    argon2
+        .hash_password(key.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|_| CryptoError::KeyDerivationFailed)
 }
 
 /// Encrypt plaintext with XChaCha20-Poly1305

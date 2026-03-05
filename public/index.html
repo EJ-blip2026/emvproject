@@ -303,6 +303,10 @@
                         <input type="password" id="loginPassword" placeholder="Enter password">
                     </div>
                     <button onclick="login()">Login</button>
+                    <div style="text-align: center; margin: 16px 0; color: var(--muted); font-size: 14px;">or</div>
+                    <button class="btn-secondary" onclick="loginWithPasskey()" style="background: linear-gradient(120deg, #4f46e5, #6366f1); color: #fff; box-shadow: 0 8px 30px rgba(79,70,229,0.2);">
+                        🔐 Login with Passkey
+                    </button>
                 </div>
                 
                 <div id="registerTab" class="hidden">
@@ -341,6 +345,7 @@
                 <div class="tabs">
                     <button class="tab active" onclick="showVaultTab('list')">My Vaults</button>
                     <button class="tab" onclick="showVaultTab('create')">Create Vault</button>
+                    <button class="tab" onclick="showVaultTab('passkeys')">🔐 Passkeys</button>
                     <button class="tab" onclick="logout()">Logout</button>
                 </div>
                 
@@ -410,6 +415,32 @@
                     
                     <div class="note-list" id="noteList"></div>
                 </div>
+                
+                <div id="passkeysTab" class="hidden">
+                    <h2 style="margin-bottom: 15px;">🔐 Manage Passkeys</h2>
+                    <p style="color: var(--muted); margin-bottom: 20px;">
+                        Passkeys enable passwordless login using biometrics or security keys. Your passkeys are stored on your device and never leave it.
+                    </p>
+                    
+                    <div id="passkeyMessage"></div>
+                    
+                    <div style="background: rgba(79,70,229,0.08); border: 1px solid rgba(79,70,229,0.2); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                        <h3 style="margin-bottom: 10px; color: var(--text);">Enroll New Passkey</h3>
+                        <p style="color: var(--muted); margin-bottom: 15px; font-size: 14px;">
+                            Click below to create a new passkey for this account. You'll be prompted to use your fingerprint, face recognition, or security key.
+                        </p>
+                        <button onclick="enrollPasskey()" style="background: linear-gradient(120deg, #4f46e5, #6366f1); color: #fff; box-shadow: 0 8px 30px rgba(79,70,229,0.2);">
+                            ➕ Enroll New Passkey
+                        </button>
+                    </div>
+                    
+                    <div>
+                        <h3 style="margin-bottom: 10px;">Your Passkeys</h3>
+                        <div id="passkeyList" style="display: grid; gap: 10px;">
+                            <p style="color: var(--muted); font-size: 14px;">Loading passkeys...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -452,6 +483,7 @@
             document.getElementById('listTab').classList.add('hidden');
             document.getElementById('createTab').classList.add('hidden');
             document.getElementById('notesTab').classList.add('hidden');
+            document.getElementById('passkeysTab').classList.add('hidden');
             
             if (tab === 'list') {
                 document.querySelectorAll('#vaultSection .tab')[0].classList.add('active');
@@ -460,6 +492,10 @@
             } else if (tab === 'create') {
                 document.querySelectorAll('#vaultSection .tab')[1].classList.add('active');
                 document.getElementById('createTab').classList.remove('hidden');
+            } else if (tab === 'passkeys') {
+                document.querySelectorAll('#vaultSection .tab')[2].classList.add('active');
+                document.getElementById('passkeysTab').classList.remove('hidden');
+                loadPasskeys();
             } else if (tab === 'notes') {
                 document.getElementById('notesTab').classList.remove('hidden');
                 loadNotes();
@@ -546,6 +582,7 @@
                 if (response.ok) {
                     authToken = data.token;
                     sessionStorage.setItem('vault_token', authToken);
+                    sessionStorage.setItem('vault_username', username);
                     // In production, derive key from password using Argon2id (use WASM)
                     sessionStorage.setItem('vault_key', btoa(password)); // Simplified for MVP
                     showSection('vault');
@@ -871,41 +908,75 @@
 
         // Cloud import functions
         function connectGoogleDrive() {
-            // OAuth 2.0 flow for Google Drive
-            const clientId = ''; // Set this in env or hardcode for demo
-            const redirectUri = encodeURIComponent(window.location.origin + '/oauth-callback');
-            const scope = encodeURIComponent('https://www.googleapis.com/auth/drive.readonly');
-            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}`;
+            const clientId = '${GOOGLE_CLIENT_ID}' || '';
             
-            if (!clientId) {
-                // For MVP: prompt user to paste access token manually
+            if (!clientId || clientId.includes('$')) {
                 const token = prompt('Paste your Google Drive access token:\\n\\n(Get one from https://developers.google.com/oauthplayground)');
                 if (token) {
                     cloudAccessToken = token;
                     cloudProvider = 'google_drive';
                     loadCloudFiles();
                 }
-            } else {
-                window.location.href = authUrl;
+                return;
             }
+
+            // Full OAuth flow
+            cloudProvider = 'google_drive';
+            const redirectUri = encodeURIComponent(window.location.origin + '/oauth-callback');
+            const scope = encodeURIComponent('https://www.googleapis.com/auth/drive.readonly');
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}&prompt=consent`;
+            
+            const popup = window.open(authUrl, 'Google Drive OAuth', 'width=600,height=700');
+            
+            window.addEventListener('message', (event) => {
+                if (event.origin !== window.location.origin) return;
+                
+                if (event.data.type === 'oauth_success') {
+                    cloudAccessToken = event.data.access_token;
+                    showMessage('vaultMessage', 'Google Drive connected!', 'success');
+                    loadCloudFiles();
+                    if (popup) popup.close();
+                } else if (event.data.type === 'oauth_error') {
+                    showMessage('vaultMessage', 'OAuth error: ' + event.data.error, 'error');
+                    if (popup) popup.close();
+                }
+            }, { once: true });
         }
 
         function connectOneDrive() {
-            const clientId = ''; // Set this for OneDrive
-            const redirectUri = encodeURIComponent(window.location.origin + '/oauth-callback');
-            const scope = encodeURIComponent('Files.Read.All');
-            const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}`;
+            const clientId = '${ONEDRIVE_CLIENT_ID}' || '';
             
-            if (!clientId) {
+            if (!clientId || clientId.includes('$')) {
                 const token = prompt('Paste your OneDrive access token:\\n\\n(Get one from Microsoft Graph Explorer)');
                 if (token) {
                     cloudAccessToken = token;
                     cloudProvider = 'onedrive';
                     loadCloudFiles();
                 }
-            } else {
-                window.location.href = authUrl;
+                return;
             }
+
+            // Full OAuth flow
+            cloudProvider = 'onedrive';
+            const redirectUri = encodeURIComponent(window.location.origin + '/oauth-callback');
+            const scope = encodeURIComponent('Files.Read.All');
+            const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}&prompt=consent`;
+            
+            const popup = window.open(authUrl, 'OneDrive OAuth', 'width=600,height=700');
+            
+            window.addEventListener('message', (event) => {
+                if (event.origin !== window.location.origin) return;
+                
+                if (event.data.type === 'oauth_success') {
+                    cloudAccessToken = event.data.access_token;
+                    showMessage('vaultMessage', 'OneDrive connected!', 'success');
+                    loadCloudFiles();
+                    if (popup) popup.close();
+                } else if (event.data.type === 'oauth_error') {
+                    showMessage('vaultMessage', 'OAuth error: ' + event.data.error, 'error');
+                    if (popup) popup.close();
+                }
+            }, { once: true });
         }
 
         async function loadCloudFiles() {
@@ -999,6 +1070,209 @@
             } catch (err) {
                 showMessage('vaultMessage', 'Import error: ' + err.message, 'error');
             }
+        }
+
+        // ============================================================================
+        // WebAuthn / Passkey Support
+        // ============================================================================
+
+        async function loginWithPasskey() {
+            const username = document.getElementById('loginUsername').value;
+            
+            if (!username) {
+                showMessage('authMessage', 'Please enter your username first', 'error');
+                return;
+            }
+
+            // Check if WebAuthn is supported
+            if (!window.PublicKeyCredential) {
+                showMessage('authMessage', 'Passkeys are not supported in this browser. Please use Chrome, Safari, or Edge.', 'error');
+                return;
+            }
+
+            try {
+                // Step 1: Request authentication challenge from server
+                showMessage('authMessage', 'Requesting authentication challenge...', 'success');
+                const beginResponse = await fetch(`${API_URL}/auth/authenticate-passkey-begin`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ username })
+                });
+                
+                const beginData = await beginResponse.json();
+                
+                if (!beginResponse.ok) {
+                    showMessage('authMessage', beginData.error || 'Failed to start passkey authentication', 'error');
+                    return;
+                }
+
+                // Step 2: Prompt user for passkey
+                showMessage('authMessage', 'Please use your passkey to authenticate...', 'success');
+                
+                const credential = await navigator.credentials.get({
+                    publicKey: {
+                        challenge: Uint8Array.from(atob(beginData.challenge), c => c.charCodeAt(0)),
+                        timeout: 60000,
+                        userVerification: 'preferred'
+                    }
+                });
+
+                if (!credential) {
+                    showMessage('authMessage', 'Passkey authentication cancelled', 'error');
+                    return;
+                }
+
+                // Step 3: Send credential to server for verification
+                const verifyResponse = await fetch(`${API_URL}/auth/authenticate-passkey-verify`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        challenge_id: beginData.challenge_id,
+                        credential_id: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+                        authenticator_data: btoa(String.fromCharCode(...new Uint8Array(credential.response.authenticatorData))),
+                        client_data_json: btoa(String.fromCharCode(...new Uint8Array(credential.response.clientDataJSON))),
+                        signature: btoa(String.fromCharCode(...new Uint8Array(credential.response.signature)))
+                    })
+                });
+
+                const verifyData = await verifyResponse.json();
+
+                if (verifyResponse.ok && verifyData.success) {
+                    authToken = verifyData.token;
+                    sessionStorage.setItem('vault_token', authToken);
+                    sessionStorage.setItem('vault_username', username);
+                    // For passkey login, we don't have the password so we can't derive the vault key
+                    // In production, you'd need to retrieve the encrypted vault key from the server
+                    sessionStorage.setItem('vault_key', 'passkey_login');
+                    showMessage('authMessage', '✅ Passkey authentication successful!', 'success');
+                    setTimeout(() => {
+                        showSection('vault');
+                        loadVaults();
+                    }, 1000);
+                } else {
+                    showMessage('authMessage', verifyData.error || 'Passkey authentication failed', 'error');
+                }
+            } catch (err) {
+                console.error('Passkey login error:', err);
+                if (err.name === 'NotAllowedError') {
+                    showMessage('authMessage', 'Passkey authentication was cancelled or timed out', 'error');
+                } else {
+                    showMessage('authMessage', 'Passkey error: ' + err.message, 'error');
+                }
+            }
+        }
+
+        async function enrollPasskey() {
+            const username = sessionStorage.getItem('vault_username') || 'user';
+            
+            // Check if WebAuthn is supported
+            if (!window.PublicKeyCredential) {
+                showMessage('passkeyMessage', 'Passkeys are not supported in this browser. Please use Chrome, Safari, or Edge.', 'error');
+                return;
+            }
+
+            try {
+                // Step 1: Request registration challenge from server
+                showMessage('passkeyMessage', 'Requesting registration challenge...', 'success');
+                const beginResponse = await fetch(`${API_URL}/auth/register-passkey-begin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ username })
+                });
+                
+                const beginData = await beginResponse.json();
+                
+                if (!beginResponse.ok) {
+                    showMessage('passkeyMessage', beginData.error || 'Failed to start passkey enrollment', 'error');
+                    return;
+                }
+
+                // Step 2: Create new passkey credential
+                showMessage('passkeyMessage', 'Please create your passkey using biometrics or security key...', 'success');
+                
+                const credential = await navigator.credentials.create({
+                    publicKey: {
+                        challenge: Uint8Array.from(atob(beginData.challenge), c => c.charCodeAt(0)),
+                        rp: {
+                            name: 'Zero-Knowledge Vault',
+                            id: window.location.hostname
+                        },
+                        user: {
+                            id: Uint8Array.from(username, c => c.charCodeAt(0)),
+                            name: username,
+                            displayName: username
+                        },
+                        pubKeyCredParams: [
+                            { alg: -7, type: 'public-key' },  // ES256
+                            { alg: -257, type: 'public-key' } // RS256
+                        ],
+                        authenticatorSelection: {
+                            authenticatorAttachment: 'platform',
+                            userVerification: 'preferred',
+                            residentKey: 'preferred'
+                        },
+                        timeout: 60000,
+                        attestation: 'none'
+                    }
+                });
+
+                if (!credential) {
+                    showMessage('passkeyMessage', 'Passkey enrollment cancelled', 'error');
+                    return;
+                }
+
+                // Step 3: Send credential to server for verification and storage
+                const verifyResponse = await fetch(`${API_URL}/auth/register-passkey-verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        user_id: authToken.split('-')[0], // Simplified user ID extraction
+                        challenge_id: beginData.challenge_id,
+                        credential_id: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+                        public_key: btoa(String.fromCharCode(...new Uint8Array(credential.response.getPublicKey()))),
+                        transports: credential.response.getTransports ? credential.response.getTransports() : []
+                    })
+                });
+
+                const verifyData = await verifyResponse.json();
+
+                if (verifyResponse.ok && verifyData.success) {
+                    showMessage('passkeyMessage', '✅ Passkey enrolled successfully!', 'success');
+                    loadPasskeys();
+                } else {
+                    showMessage('passkeyMessage', verifyData.error || 'Passkey enrollment failed', 'error');
+                }
+            } catch (err) {
+                console.error('Passkey enrollment error:', err);
+                if (err.name === 'NotAllowedError') {
+                    showMessage('passkeyMessage', 'Passkey enrollment was cancelled or timed out', 'error');
+                } else {
+                    showMessage('passkeyMessage', 'Passkey error: ' + err.message, 'error');
+                }
+            }
+        }
+
+        async function loadPasskeys() {
+            // For now, just show a message that passkeys are enrolled
+            // In production, you'd fetch the list of passkeys from the server
+            const passkeyList = document.getElementById('passkeyList');
+            passkeyList.innerHTML = `
+                <div style="padding: 14px; background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); border-radius: 10px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 24px;">🔐</span>
+                        <div>
+                            <div style="font-weight: 600; margin-bottom: 4px;">Platform Authenticator</div>
+                            <div style="color: var(--muted); font-size: 13px;">Enrolled and active</div>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
     </script>
 </body>

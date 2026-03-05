@@ -189,3 +189,82 @@ pub struct CloudFileResponse {
 pub struct ErrorResponse {
     pub error: String,
 }
+#[derive(Debug, Clone, Serialize)]
+pub struct AuditLog {
+    pub id: String,
+    pub user_id: String,
+    pub action: String,
+    pub resource_type: Option<String>,
+    pub resource_id: Option<String>,
+    pub ip_address: Option<String>,
+    pub details: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuditLogQueryParams {
+    pub start_date: Option<String>, // ISO 8601
+    pub end_date: Option<String>,   // ISO 8601
+    pub action: Option<String>,
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuditLogsResponse {
+    pub logs: Vec<AuditLog>,
+    pub total_count: i32,
+}
+
+// WebAuthn/Passkey DTOs
+#[derive(Debug, Deserialize)]
+pub struct PasskeyRegisterBeginRequest {
+    pub username: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PasskeyRegisterBeginResponse {
+    pub challenge: String, // Base64-encoded challenge bytes
+    pub challenge_id: String, // UUID to correlate with verification
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PasskeyRegisterVerifyRequest {
+    pub user_id: String,
+    pub challenge_id: String,
+    pub credential_id: String, // Base64
+    pub public_key: String,    // Base64 encoded CBOR
+    pub transports: Option<Vec<String>>, // ["usb", "internal", etc]
+}
+
+#[derive(Debug, Serialize)]
+pub struct PasskeyRegisterVerifyResponse {
+    pub success: bool,
+    pub credential_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PasskeyAuthenticateBeginRequest {
+    pub username: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PasskeyAuthenticateBeginResponse {
+    pub challenge: String, // Base64-encoded challenge bytes
+    pub challenge_id: String, // UUID to correlate with verification
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PasskeyAuthenticateVerifyRequest {
+    pub challenge_id: String,
+    pub credential_id: String, // Base64
+    pub authenticator_data: String, // Base64
+    pub client_data_json: String, // Base64
+    pub signature: String, // Base64
+}
+
+#[derive(Debug, Serialize)]
+pub struct PasskeyAuthenticateVerifyResponse {
+    pub success: bool,
+    pub token: String,
+    pub user_id: String,
+}

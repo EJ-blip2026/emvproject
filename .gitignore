@@ -1,1 +1,5 @@
 target/
+certs/*.key
+certs/*.srl
+certs/*.pem
+!certs/*.crt

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gamma - EMV Vault</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f1115;
+            --bg-2: #111827;
+            --panel: rgba(18, 24, 38, 0.9);
+            --line: rgba(255, 255, 255, 0.08);
+            --text: #f8fafc;
+            --muted: #b4c0d4;
+            --accent: #f59e0b;
+            --accent-2: #22c55e;
+            --accent-3: #0ea5e9;
+            --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Sora", system-ui, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(900px 400px at 10% 10%, rgba(14, 165, 233, 0.15), transparent 55%),
+                radial-gradient(700px 420px at 90% 5%, rgba(245, 158, 11, 0.18), transparent 55%),
+                linear-gradient(150deg, #0b0d12 0%, #111827 45%, #0b1324 100%);
+            min-height: 100vh;
+        }
+        .noise {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.18;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.25'/%3E%3C/svg%3E");
+            mix-blend-mode: soft-light;
+        }
+        .container {
+            width: min(1200px, 92%);
+            margin: 0 auto;
+            padding: 80px 0 120px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            margin-bottom: 60px;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        .brand-mark {
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 70%);
+            display: grid;
+            place-items: center;
+            color: #0b0d12;
+            font-weight: 700;
+        }
+        .nav {
+            display: flex;
+            gap: 18px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .nav a {
+            color: inherit;
+            text-decoration: none;
+        }
+        .hero {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 32px;
+            align-items: center;
+            margin-bottom: 64px;
+        }
+        .hero h1 {
+            font-family: "Fraunces", serif;
+            font-size: clamp(2.6rem, 4vw, 3.8rem);
+            line-height: 1.05;
+            margin-bottom: 18px;
+        }
+        .hero p {
+            color: var(--muted);
+            font-size: 1.05rem;
+            line-height: 1.7;
+            max-width: 520px;
+        }
+        .cta-row {
+            display: flex;
+            gap: 14px;
+            margin-top: 28px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            border: none;
+            padding: 14px 22px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .btn-primary {
+            background: linear-gradient(120deg, var(--accent) 0%, #f97316 100%);
+            color: #0b0d12;
+            box-shadow: 0 16px 40px rgba(245, 158, 11, 0.32);
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+            border: 1px solid var(--line);
+        }
+        .hero-card {
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.85), rgba(10, 16, 30, 0.95));
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            padding: 28px;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+        .hero-card::after {
+            content: "";
+            position: absolute;
+            right: -80px;
+            top: -80px;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(34, 197, 94, 0.3), transparent 60%);
+        }
+        .hero-card h3 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+        .hero-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .hero-pill {
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.03);
+            font-size: 14px;
+        }
+        .section {
+            margin-top: 64px;
+        }
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 18px;
+            font-weight: 600;
+            color: var(--accent-3);
+        }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 18px;
+        }
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 22px;
+            min-height: 180px;
+            box-shadow: var(--shadow);
+        }
+        .card h4 {
+            margin-bottom: 10px;
+        }
+        .card p {
+            color: var(--muted);
+            line-height: 1.6;
+        }
+        .pricing {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 18px;
+        }
+        .price-card {
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: linear-gradient(160deg, rgba(18, 24, 38, 0.95), rgba(11, 17, 30, 0.95));
+            padding: 24px;
+            position: relative;
+        }
+        .price-card.highlight {
+            border-color: rgba(34, 197, 94, 0.4);
+            box-shadow: 0 20px 50px rgba(34, 197, 94, 0.15);
+        }
+        .price-card h4 { margin-bottom: 6px; }
+        .price-card .price {
+            font-size: 2rem;
+            font-weight: 600;
+            margin: 12px 0;
+        }
+        .price-card ul {
+            list-style: none;
+            display: grid;
+            gap: 10px;
+            color: var(--muted);
+        }
+        .footer {
+            margin-top: 90px;
+            padding-top: 26px;
+            border-top: 1px solid var(--line);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        @media (max-width: 720px) {
+            header { flex-direction: column; align-items: flex-start; }
+            .nav { flex-wrap: wrap; }
+            .hero-grid { grid-template-columns: 1fr; }
+        }
+        @keyframes riseIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate {
+            animation: riseIn 0.8s ease both;
+        }
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.3s; }
+    </style>
+</head>
+<body>
+    <div class="noise"></div>
+    <div class="container">
+        <header class="animate">
+            <div class="brand">
+                <div class="brand-mark">GV</div>
+                <div>
+                    <div>Gamma Vault</div>
+                    <small style="color: var(--muted);">Enterprise zero-knowledge operations</small>
+                </div>
+            </div>
+            <nav class="nav">
+                <a href="#platform">Platform</a>
+                <a href="#security">Security</a>
+                <a href="#pricing">Pricing</a>
+                <a href="https://emvproject-production.up.railway.app/" target="_blank" rel="noopener">Access Repository</a>
+                <a href="/">Launch App</a>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <div class="animate delay-1">
+                <div class="section-title">Gamma landing page</div>
+                <h1>Deploy a private vault with a real-time security command center.</h1>
+                <p>
+                    EMV Vault Gamma is the enterprise tier built for executive teams and
+                    security operators. Centralize sensitive files, encrypted notes, and
+                    cross-cloud imports with strict usage controls and audit-friendly visibility.
+                </p>
+                <div class="cta-row">
+                    <a class="btn btn-primary" href="/">Request Gamma Access</a>
+                    <a class="btn btn-secondary" href="#pricing">Review Enterprise Plans</a>
+                </div>
+            </div>
+            <div class="hero-card animate delay-2">
+                <h3>Gamma signal board</h3>
+                <p style="color: var(--muted); line-height: 1.6;">
+                    Keep every vault, import, and quota threshold visible for your team.
+                    Gamma applies guardrails for storage usage, audit trails, and encrypted retrieval.
+                </p>
+                <div class="hero-grid">
+                    <div class="hero-pill">Real-time usage alerts</div>
+                    <div class="hero-pill">Cross-cloud ingest</div>
+                    <div class="hero-pill">Zero-knowledge encryption</div>
+                    <div class="hero-pill">Enterprise storage caps</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="platform" class="section">
+            <div class="section-title">Platform</div>
+            <div class="cards">
+                <div class="card animate delay-1">
+                    <h4>Vault orchestration</h4>
+                    <p>Segment mission critical vaults with tiered storage and dedicated access policies.</p>
+                </div>
+                <div class="card animate delay-2">
+                    <h4>Cloud import control</h4>
+                    <p>Pull from Drive and OneDrive while keeping tokens isolated to session scope.</p>
+                </div>
+                <div class="card animate delay-3">
+                    <h4>Admin-grade readiness</h4>
+                    <p>Seed enterprise admins instantly with enforced limits and audit ready metadata.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="security" class="section">
+            <div class="section-title">Security</div>
+            <div class="cards">
+                <div class="card">
+                    <h4>Zero-knowledge by default</h4>
+                    <p>Client-side encryption keeps secrets sealed before they ever reach the server.</p>
+                </div>
+                <div class="card">
+                    <h4>Quota enforcement</h4>
+                    <p>Automatic storage reservation prevents overages and keeps your vault healthy.</p>
+                </div>
+                <div class="card">
+                    <h4>Signal-driven alerts</h4>
+                    <p>Usage thresholds trigger proactive warnings at the 90% mark.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="pricing" class="section">
+            <div class="section-title">Pricing</div>
+            <div class="pricing">
+                <div class="price-card">
+                    <h4>Pro</h4>
+                    <p class="price">$9.99<span style="font-size: 1rem; color: var(--muted);"> / month</span></p>
+                    <ul>
+                        <li>100 GB vault storage</li>
+                        <li>Encrypted notes and files</li>
+                        <li>Multi-vault organization</li>
+                    </ul>
+                </div>
+                <div class="price-card highlight">
+                    <h4>Enterprise Gamma</h4>
+                    <p class="price">$49.99<span style="font-size: 1rem; color: var(--muted);"> / month</span></p>
+                    <ul>
+                        <li>1 TB secure storage</li>
+                        <li>Cross-cloud import workflows</li>
+                        <li>Dedicated usage guardrails</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <div>Gamma Vault for EMV - enterprise private storage.</div>
+            <div>Contact: security@emvproject.com</div>
+        </footer>
+    </div>
+</body>
+</html>

@@ -8,6 +8,7 @@ rust-version = "1.80"
 
 # Web API
 axum = "0.6"
+hyper = { version = "0.14", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.4", features = ["fs", "cors"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -24,6 +25,12 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["alloc", "serde"] }
 oauth2 = "4.4"
 url = "2.5"
+openssl = "0.10"
+rustls = "0.21"
+rustls-pemfile = "1.0"
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+webauthn-rs = "0.4"
+webauthn-rs-proto = "0.4"
 
 # Cryptography for zero-knowledge vault
 argon2 = "0.5"

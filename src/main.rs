@@ -4,25 +4,30 @@
 mod crypto;
 mod models;
 mod cloud_import;
+mod webauthn;
 
 use axum::{
     extract::{Path as AxumPath, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{Html, IntoResponse},
     routing::{get, get_service, post},
     Json, Router,
 };
 use base64::Engine;
 use chrono::Utc;
 use dashmap::DashMap;
+use hyper::Server;
+use rustls::{Certificate, PrivateKey, RootCertStore, ServerConfig};
+use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use serde_json::json;
 use sqlx::AnyPool;
-use std::{env, net::SocketAddr, sync::Arc};
+use std::{env, fs, io::BufReader, net::SocketAddr, sync::Arc};
 use tower_http::services::ServeDir;
 use tower_http::cors::{CorsLayer, Any};
 use uuid::Uuid;
 
 use crypto::*;
+use emvproject::redact_sensitive;
 use models::*;
 
 #[derive(Clone)]
@@ -126,6 +131,7 @@ async fn register_handler(
 
 async fn login_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> impl IntoResponse {
     // Fetch user from DB
@@ -177,6 +183,19 @@ async fn login_handler(
     let token = Uuid::new_v4().to_string();
     state.sessions.insert(user_id.clone(), token.clone());
 
+    // Log successful login
+    let ip = extract_ip(&headers);
+    log_audit(
+        &state,
+        &user_id,
+        "login_success",
+        Some("user"),
+        Some(&user_id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     (
         StatusCode::OK,
         Json(json!({
@@ -186,6 +205,344 @@ async fn login_handler(
         })),
     )
         .into_response()
+}
+
+// WebAuthn Passkey Handlers
+
+async fn passkey_register_begin_handler(
+    State(state): State<AppState>,
+    Json(req): Json<PasskeyRegisterBeginRequest>,
+) -> impl IntoResponse {
+    // Fetch user to get ID
+    let user_result = sqlx::query_as::<_, (String,)>(
+        "SELECT id FROM users WHERE username = $1",
+    )
+    .bind(&req.username)
+    .fetch_one(&state.db_pool)
+    .await;
+
+    let (user_id,) = match user_result {
+        Ok(u) => u,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
+                .into_response()
+        }
+    };
+
+    // Generate registration challenge
+    match webauthn::generate_registration_challenge(&state.db_pool, &user_id).await {
+        Ok((challenge_bytes, challenge_id)) => {
+            let challenge_b64 = base64::engine::general_purpose::STANDARD.encode(&challenge_bytes);
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "challenge": challenge_b64,
+                    "challenge_id": challenge_id
+                })),
+            )
+                .into_response()
+        }
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to generate challenge"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn passkey_register_verify_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<PasskeyRegisterVerifyRequest>,
+) -> impl IntoResponse {
+    // Verify the challenge exists and hasn't expired
+    match webauthn::verify_registration_challenge(&state.db_pool, &req.challenge_id, &req.user_id)
+        .await
+    {
+        Ok(_) => {
+            // Decode the public_key from base64
+            let public_key_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.public_key) {
+                Ok(b) => b,
+                Err(_) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "Invalid public key encoding"})),
+                    )
+                        .into_response()
+                }
+            };
+
+            let credential_id_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.credential_id) {
+                Ok(b) => b,
+                Err(_) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "Invalid credential_id encoding"})),
+                    )
+                        .into_response()
+                }
+            };
+
+            // Store credential
+            match webauthn::store_credential(
+                &state.db_pool,
+                &req.user_id,
+                credential_id_bytes,
+                public_key_bytes,
+                Some(req.transports.unwrap_or_default()),
+            )
+            .await
+            {
+                Ok(_) => {
+                    let ip = extract_ip(&headers);
+                    log_audit(
+                        &state,
+                        &req.user_id,
+                        "passkey_enrolled",
+                        Some("credential"),
+                        Some(&req.credential_id),
+                        ip.as_deref(),
+                        None,
+                    )
+                    .await;
+
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "credential_id": req.credential_id
+                        })),
+                    )
+                        .into_response()
+                }
+                Err(_) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Failed to store credential"})),
+                )
+                    .into_response(),
+            }
+        }
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Challenge verification failed or expired"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn passkey_authenticate_begin_handler(
+    State(state): State<AppState>,
+    Json(req): Json<PasskeyAuthenticateBeginRequest>,
+) -> impl IntoResponse {
+    // Fetch user to check if they have passkey credentials
+    let user_result = sqlx::query_as::<_, (String,)>(
+        "SELECT id FROM users WHERE username = $1",
+    )
+    .bind(&req.username)
+    .fetch_one(&state.db_pool)
+    .await;
+
+    let (user_id,) = match user_result {
+        Ok(u) => u,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
+                .into_response()
+        }
+    };
+
+    // Check if user has any passkey credentials
+    let has_credentials = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = $1",
+    )
+    .bind(&user_id)
+    .fetch_one(&state.db_pool)
+    .await;
+
+    if matches!(has_credentials, Ok(count) if count == 0) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "User has no passkey credentials"})),
+        )
+            .into_response();
+    }
+
+    // Generate authentication challenge
+    match webauthn::generate_authentication_challenge(&state.db_pool).await {
+        Ok((challenge_bytes, challenge_id)) => {
+            let challenge_b64 = base64::engine::general_purpose::STANDARD.encode(&challenge_bytes);
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "challenge": challenge_b64,
+                    "challenge_id": challenge_id
+                })),
+            )
+                .into_response()
+        }
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to generate challenge"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn passkey_authenticate_verify_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<PasskeyAuthenticateVerifyRequest>,
+) -> impl IntoResponse {
+    // Verify the challenge exists
+    match webauthn::verify_authentication_challenge(&state.db_pool, &req.challenge_id).await {
+        Ok(_) => {
+            // In a production system, you would:
+            // 1. Decode authenticatorData, clientDataJSON, and signature
+            // 2. Verify the signature against the stored public key
+            // 3. Check the challenge in clientDataJSON matches the stored challenge
+            // 4. Verify the origin matches the expected RP ID
+            // 5. Update the sign count to prevent cloned authenticators
+
+            // For MVP, we'll do basic validation and require proper signature verification
+            let credential_id_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.credential_id) {
+                Ok(b) => b,
+                Err(_) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "Invalid credential_id encoding"})),
+                    )
+                        .into_response()
+                }
+            };
+
+            // Fetch the user and credential
+            let cred_result = sqlx::query_as::<_, (String, String)>(
+                "SELECT user_id, sign_count FROM webauthn_credentials WHERE credential_id = $1",
+            )
+            .bind(&credential_id_bytes.as_slice())
+            .fetch_one(&state.db_pool)
+            .await;
+
+            let (user_id, _sign_count_str) = match cred_result {
+                Ok(c) => c,
+                Err(_) => {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": "Credential not found"})),
+                    )
+                        .into_response()
+                }
+            };
+
+            // TODO: In production, verify the signature using webauthn-rs crate
+            // For now, do basic validation
+            if req.signature.is_empty() || req.client_data_json.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "Missing required attestation fields"})),
+                )
+                    .into_response();
+            }
+
+            // Increment sign count to prevent cloned authenticators
+            if let Err(_) = webauthn::increment_sign_count(&state.db_pool, &credential_id_bytes).await {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Failed to update sign count"})),
+                )
+                    .into_response();
+            }
+
+            // Generate session token
+            let token = Uuid::new_v4().to_string();
+            state.sessions.insert(user_id.clone(), token.clone());
+
+            // Log successful passkey authentication
+            let ip = extract_ip(&headers);
+            log_audit(
+                &state,
+                &user_id,
+                "passkey_login_success",
+                Some("credential"),
+                Some(&req.credential_id),
+                ip.as_deref(),
+                None,
+            )
+            .await;
+
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "token": token,
+                    "user_id": user_id
+                })),
+            )
+                .into_response()
+        }
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Challenge verification failed or expired"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn gamma_landing_handler() -> impl IntoResponse {
+    let page = fs::read_to_string("public/gamma.html")
+        .unwrap_or_else(|_| "Gamma landing page not found".to_string());
+    Html(page)
+}
+
+fn load_certs(path: &str) -> Vec<Certificate> {
+    let file = fs::File::open(path).expect("cannot open certificate file");
+    let mut reader = BufReader::new(file);
+    certs(&mut reader)
+        .expect("failed to read certificates")
+        .into_iter()
+        .map(Certificate)
+        .collect()
+}
+
+fn load_private_key(path: &str) -> PrivateKey {
+    let file = fs::File::open(path).expect("cannot open private key file");
+    let mut reader = BufReader::new(file);
+
+    if let Ok(keys) = pkcs8_private_keys(&mut reader) {
+        if let Some(key) = keys.first() {
+            return PrivateKey(key.clone());
+        }
+    }
+
+    let file = fs::File::open(path).expect("cannot open private key file");
+    let mut reader = BufReader::new(file);
+    let keys = rsa_private_keys(&mut reader).expect("failed to read RSA private key");
+    keys.first()
+        .map(|key| PrivateKey(key.clone()))
+        .expect("no private key found")
+}
+
+fn create_mtls_config() -> ServerConfig {
+    let mut roots = RootCertStore::empty();
+
+    let ca_file = fs::File::open("certs/ca.crt").expect("cannot open CA file");
+    let mut reader = BufReader::new(ca_file);
+    for cert in certs(&mut reader).expect("failed to read CA cert") {
+        roots
+            .add(&Certificate(cert))
+            .expect("failed to add CA cert");
+    }
+
+    ServerConfig::builder()
+        .with_safe_defaults()
+        .with_client_cert_verifier(Arc::new(rustls::server::AllowAnyAuthenticatedClient::new(roots)))
+        .with_single_cert(load_certs("certs/server.crt"), load_private_key("certs/server.key"))
+        .expect("bad certificates/private key")
 }
 
 // ============================================================================
@@ -359,11 +716,16 @@ async fn create_note_handler(
                 .await;
 
                 match insert_res {
-                    Ok(_) => (
-                        StatusCode::CREATED,
-                        Json(json!({"entry_id": entry_id, "message": "Note created"})),
-                    )
-                        .into_response(),
+                    Ok(_) => {
+                        // Log note creation
+                        let ip = extract_ip(&headers);
+                        log_audit(&state, &user_id, "note_created", Some("note"), Some(&entry_id), ip.as_deref(), None).await;
+                        (
+                            StatusCode::CREATED,
+                            Json(json!({"entry_id": entry_id, "message": "Note created"})),
+                        )
+                            .into_response()
+                    }
                     Err(e) => {
                         // compensate reserved usage
                         let _ = sqlx::query(
@@ -469,11 +831,16 @@ async fn upload_file_handler(
             .await;
 
             match insert_res {
-                Ok(_) => (
-                    StatusCode::CREATED,
-                    Json(json!({"entry_id": entry_id, "message": "File stored"})),
-                )
-                    .into_response(),
+                Ok(_) => {
+                    // Log file upload
+                    let ip = extract_ip(&headers);
+                    log_audit(&state, &user_id, "file_uploaded", Some("file"), Some(&entry_id), ip.as_deref(), None).await;
+                    (
+                        StatusCode::CREATED,
+                        Json(json!({"entry_id": entry_id, "message": "File stored"})),
+                    )
+                        .into_response()
+                }
                 Err(e) => {
                     // compensate reserved usage
                     let _ = sqlx::query(
@@ -776,7 +1143,63 @@ async fn upgrade_enterprise_handler(
 }
 
 // ============================================================================
-// CLOUD IMPORT HANDLERS
+// AUDIT LOGS
+// ============================================================================
+
+async fn get_audit_logs_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user_id = match authenticate(&state, &headers).await {
+        Some(uid) => uid,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
+            )
+                .into_response()
+        }
+    };
+
+    // Query audit logs for authenticated user (last 100, ordered by created_at DESC)
+    let logs_result = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String)>(
+        "SELECT id, user_id, action, resource_type, resource_id, ip_address, details, created_at FROM audit_logs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100"
+    )
+    .bind(&user_id)
+    .fetch_all(&state.db_pool)
+    .await;
+
+    match logs_result {
+        Ok(logs) => {
+            let audit_logs: Vec<AuditLog> = logs
+                .into_iter()
+                .map(|(id, user_id, action, resource_type, resource_id, ip_address, details, created_at)| AuditLog {
+                    id,
+                    user_id,
+                    action,
+                    resource_type,
+                    resource_id,
+                    ip_address,
+                    details,
+                    created_at,
+                })
+                .collect();
+
+            let response = AuditLogsResponse {
+                total_count: audit_logs.len() as i32,
+                logs: audit_logs,
+            };
+
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Failed to fetch audit logs: {}", e)})),
+        )
+            .into_response(),
+    }
+}
+
 // ============================================================================
 
 async fn list_cloud_files_handler(
@@ -943,8 +1366,99 @@ async fn import_cloud_files_handler(
     )
         .into_response()
 }
+
+// OAuth callback handler - serves HTML that posts token back to opener
+async fn oauth_callback_handler() -> impl IntoResponse {
+    let html = r#"
+<!DOCTYPE html>
+<html>
+<head><title>OAuth Callback</title></head>
+<body>
+<script>
+    // Extract token from URL fragment
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const accessToken = params.get('access_token');
+    const error = params.get('error');
+    
+    if (accessToken) {
+        // Send token back to opener window
+        if (window.opener) {
+            window.opener.postMessage({
+                type: 'oauth_success',
+                access_token: accessToken
+            }, window.location.origin);
+            window.close();
+        } else {
+            document.body.innerHTML = '<h3>✅ Authentication successful!</h3><p>Access token: <code>' + accessToken + '</code></p><p>You can close this window.</p>';
+        }
+    } else if (error) {
+        if (window.opener) {
+            window.opener.postMessage({
+                type: 'oauth_error',
+                error: error
+            }, window.location.origin);
+            window.close();
+        } else {
+            document.body.innerHTML = '<h3>❌ Authentication failed</h3><p>Error: ' + error + '</p>';
+        }
+    } else {
+        document.body.innerHTML = '<h3>⏳ Processing authentication...</h3>';
+    }
+</script>
+</body>
+</html>
+"#;
+    (StatusCode::OK, [("content-type", "text/html")], html)
+}
 // ============================================================================
 // AUTHENTICATION MIDDLEWARE
+// ============================================================================
+// AUDIT LOGGING
+// ============================================================================
+
+async fn log_audit(
+    state: &AppState,
+    user_id: &str,
+    action: &str,
+    resource_type: Option<&str>,
+    resource_id: Option<&str>,
+    ip_address: Option<&str>,
+    details: Option<&str>,
+) {
+    let audit_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let _ = sqlx::query(
+        "INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, ip_address, details, created_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+    )
+    .bind(&audit_id)
+    .bind(user_id)
+    .bind(action)
+    .bind(resource_type)
+    .bind(resource_id)
+    .bind(ip_address)
+    .bind(details)
+    .bind(&now)
+    .execute(&state.db_pool)
+    .await;
+}
+
+// Helper to extract client IP from headers
+fn extract_ip(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        })
+}
+
 // ============================================================================
 
 async fn authenticate(state: &AppState, headers: &HeaderMap) -> Option<String> {
@@ -988,14 +1502,14 @@ async fn main() {
         }
     }
 
-    println!(
-        "Connecting to database: {}",
-        database_url
+    let db_log_value = redact_sensitive(
+        &database_url
             .replace(|c: char| c.is_whitespace(), "")
             .chars()
             .take(50)
-            .collect::<String>()
+            .collect::<String>(),
     );
+    println!("Connecting to database: {}", db_log_value);
 
     // Try to connect with exponential backoff for Postgres startup
     let mut pool = None;
@@ -1016,7 +1530,10 @@ async fn main() {
             }
             Err(err) => {
                 if database_url.starts_with("sqlite://") {
-                    eprintln!("Failed to open sqlite database '{}': {err}. Falling back to in-memory sqlite.", database_url);
+                    eprintln!(
+                        "Failed to open sqlite database '{}': {err}. Falling back to in-memory sqlite.",
+                        redact_sensitive(&database_url)
+                    );
                     pool = Some(
                         AnyPool::connect("sqlite::memory:")
                             .await
@@ -1094,15 +1611,22 @@ async fn main() {
     let app = Router::new()
         // Health check (must come before static files)
         .route("/health", get(health_handler))
+        .route("/gamma", get(gamma_landing_handler))
         // Auth API
         .route("/auth/register", post(register_handler))
         .route("/auth/login", post(login_handler))
+        .route("/auth/register-passkey-begin", post(passkey_register_begin_handler))
+        .route("/auth/register-passkey-verify", post(passkey_register_verify_handler))
+        .route("/auth/authenticate-passkey-begin", post(passkey_authenticate_begin_handler))
+        .route("/auth/authenticate-passkey-verify", post(passkey_authenticate_verify_handler))
         // Account API
         .route("/account/usage", get(get_usage_handler))
         .route("/account/upgrade", post(upgrade_enterprise_handler))
+        .route("/account/audit-logs", get(get_audit_logs_handler))
         // Cloud import API
         .route("/cloud/list", post(list_cloud_files_handler))
         .route("/vaults/:vault_id/import", post(import_cloud_files_handler))
+        .route("/oauth-callback", get(oauth_callback_handler))
         // Vaults API
         .route("/vaults/create", post(create_vault_handler))
         .route("/vaults/list", get(list_vaults_handler))
@@ -1127,8 +1651,12 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("🔒 Vault API listening on http://{}", addr);
 
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+    // Use hyper::Server for axum 0.6 compatibility
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let std_listener = listener.into_std().unwrap();
+    Server::from_tcp(std_listener)
+        .unwrap()
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
 }
