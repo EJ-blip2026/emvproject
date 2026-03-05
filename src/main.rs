@@ -211,24 +211,18 @@ async fn login_handler(
 
 async fn passkey_register_begin_handler(
     State(state): State<AppState>,
-    Json(req): Json<PasskeyRegisterBeginRequest>,
+    headers: HeaderMap,
+    Json(_req): Json<PasskeyRegisterBeginRequest>,
 ) -> impl IntoResponse {
-    // Fetch user to get ID
-    let user_result = sqlx::query_as::<_, (String,)>(
-        "SELECT id FROM users WHERE username = $1",
-    )
-    .bind(&req.username)
-    .fetch_one(&state.db_pool)
-    .await;
-
-    let (user_id,) = match user_result {
-        Ok(u) => u,
-        Err(_) => {
+    // Bind registration challenge to the authenticated session user.
+    let user_id = match authenticate(&state, &headers).await {
+        Some(uid) => uid,
+        None => {
             return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "User not found"})),
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
@@ -258,11 +252,22 @@ async fn passkey_register_verify_handler(
     headers: HeaderMap,
     Json(req): Json<PasskeyRegisterVerifyRequest>,
 ) -> impl IntoResponse {
-    use webauthn_rs::prelude::*;
-    use serde::{Deserialize};
+    use serde::Deserialize;
+
+    // Never trust client-supplied user_id for challenge ownership.
+    let user_id = match authenticate(&state, &headers).await {
+        Some(uid) => uid,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
+            )
+                .into_response();
+        }
+    };
     
     // Step 1: Verify the challenge exists and hasn't expired, and retrieve it
-    let challenge_bytes = match webauthn::verify_registration_challenge(&state.db_pool, &req.challenge_id, &req.user_id)
+    let challenge_bytes = match webauthn::verify_registration_challenge(&state.db_pool, &req.challenge_id, &user_id)
         .await
     {
         Ok(challenge) => challenge,
@@ -406,7 +411,6 @@ async fn passkey_register_verify_handler(
 
     let flags = auth_data_bytes[32];
     let has_credential_data = (flags & 0x40) != 0; // Bit 6 = attested credential data included
-    let has_user_verified = (flags & 0x04) != 0; // Bit 2 = user verified
 
     if !has_credential_data {
         return (
@@ -470,7 +474,7 @@ async fn passkey_register_verify_handler(
     // Step 10: Store the verified credential
     match webauthn::store_credential(
         &state.db_pool,
-        &req.user_id,
+        &user_id,
         credential_id_bytes.clone(),
         public_key_cbor_bytes,
         Some(req.transports.unwrap_or_default()),
@@ -481,7 +485,7 @@ async fn passkey_register_verify_handler(
             let ip = extract_ip(&headers);
             log_audit(
                 &state,
-                &req.user_id,
+                &user_id,
                 "passkey_enrolled",
                 Some("credential"),
                 Some(&req.credential_id),

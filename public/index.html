@@ -564,6 +564,7 @@
             : window.location.origin;
         
         let authToken = sessionStorage.getItem('vault_token');
+        let authUserId = sessionStorage.getItem('vault_user_id');
         let encryptionKey = sessionStorage.getItem('vault_key');
         let currentVaultId = null;
         let currentVaultName = null;
@@ -694,8 +695,10 @@
                 
                 if (response.ok) {
                     authToken = data.token;
+                    authUserId = data.user_id;
                     sessionStorage.setItem('vault_token', authToken);
                     sessionStorage.setItem('vault_username', username);
+                    sessionStorage.setItem('vault_user_id', authUserId);
                     // In production, derive key from password using Argon2id (use WASM)
                     sessionStorage.setItem('vault_key', btoa(password)); // Simplified for MVP
                     showSection('vault');
@@ -1252,8 +1255,10 @@
 
                 if (verifyResponse.ok && verifyData.success) {
                     authToken = verifyData.token;
+                    authUserId = verifyData.user_id;
                     sessionStorage.setItem('vault_token', authToken);
                     sessionStorage.setItem('vault_username', username);
+                    sessionStorage.setItem('vault_user_id', authUserId);
                     // For passkey login, we don't have the password so we can't derive the vault key
                     // In production, you'd need to retrieve the encrypted vault key from the server
                     sessionStorage.setItem('vault_key', 'passkey_login');
@@ -1348,7 +1353,7 @@
                         'Authorization': `Bearer ${authToken}`
                     },
                     body: JSON.stringify({
-                        user_id: authToken.split('-')[0],
+                        user_id: authUserId || '',
                         challenge_id: beginData.challenge_id,
                         credential_id: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
                         attestation_object: btoa(String.fromCharCode(...new Uint8Array(attestationObject))),
