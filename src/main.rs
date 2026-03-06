@@ -468,8 +468,17 @@ async fn passkey_register_verify_handler(
             .into_response();
     }
 
-    let _stored_cred_id = &auth_data_bytes[pos..pos + cred_id_len];
+    let stored_cred_id = &auth_data_bytes[pos..pos + cred_id_len];
     pos += cred_id_len;
+
+    // Verify the credential ID from attestation matches what the client sent
+    if stored_cred_id != credential_id_bytes.as_slice() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("Credential ID mismatch: attestation and request differ")})),
+        )
+            .into_response();
+    }
 
     // Extract public key (CBOR encoded)
     let public_key_bytes = &auth_data_bytes[pos..];
@@ -636,10 +645,14 @@ async fn passkey_authenticate_verify_handler(
 
             let (user_id, _sign_count_str) = match cred_result {
                 Ok(c) => c,
-                Err(_) => {
+                Err(e) => {
+                    // Log the credential_id for debugging
+                    let cred_id_hex = hex::encode(&credential_id_bytes);
+                    eprintln!("Credential lookup failed for credential_id (hex): {}", cred_id_hex);
+                    eprintln!("Error: {:?}", e);
                     return (
                         StatusCode::UNAUTHORIZED,
-                        Json(json!({"error": "Credential not found"})),
+                        Json(json!({"error": format!("Credential not found (tried: {})", cred_id_hex[..16.min(cred_id_hex.len())].to_string())})),
                     )
                         .into_response()
                 }
