@@ -1328,7 +1328,8 @@
                             { alg: -257, type: 'public-key' } // RS256
                         ],
                         authenticatorSelection: {
-                            authenticatorAttachment: 'platform',
+                            // Removed authenticatorAttachment to allow both platform (Touch ID, Face ID) 
+                            // and cross-platform (Google passkey, security keys) authenticators
                             userVerification: 'preferred',
                             residentKey: 'preferred'
                         },
