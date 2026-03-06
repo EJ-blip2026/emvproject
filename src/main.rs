@@ -678,15 +678,15 @@ async fn passkey_authenticate_verify_handler(
             eprintln!("[LOGIN] Looking for credential_id (hex): {}", cred_id_hex);
             eprintln!("[LOGIN] Credential ID length: {} bytes", credential_id_bytes.len());
 
-            // Fetch the user and credential
-            let cred_result = sqlx::query_as::<_, (String, String)>(
-                "SELECT user_id, sign_count FROM webauthn_credentials WHERE credential_id = $1",
+            // Fetch the credential owner. We only need user_id here.
+            let cred_result = sqlx::query_as::<_, (String,)>(
+                "SELECT user_id FROM webauthn_credentials WHERE credential_id = $1",
             )
             .bind(&credential_id_bytes)
             .fetch_one(&state.db_pool)
             .await;
 
-            let (user_id, _sign_count_str) = match cred_result {
+            let (user_id,) = match cred_result {
                 Ok(c) => c,
                 Err(e) => {
                     // Log the credential_id for debugging
@@ -694,9 +694,17 @@ async fn passkey_authenticate_verify_handler(
                     eprintln!("[LOGIN] Credential lookup FAILED");
                     eprintln!("[LOGIN] Searched for credential_id (hex): {}", cred_id_hex);
                     eprintln!("[LOGIN] Database error: {:?}", e);
+
+                    let is_not_found = matches!(e, sqlx::Error::RowNotFound);
+                    let err_msg = if is_not_found {
+                        format!("Credential not found (tried: {})", cred_id_hex[..16.min(cred_id_hex.len())].to_string())
+                    } else {
+                        "Credential lookup failed due to database decode/query error".to_string()
+                    };
+
                     return (
                         StatusCode::UNAUTHORIZED,
-                        Json(json!({"error": format!("Credential not found (tried: {})", cred_id_hex[..16.min(cred_id_hex.len())].to_string())})),
+                        Json(json!({"error": err_msg})),
                     )
                         .into_response()
                 }
