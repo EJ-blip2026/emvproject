@@ -576,21 +576,42 @@ async fn passkey_authenticate_begin_handler(
         }
     };
 
-    // Check if user has any passkey credentials
-    let has_credentials = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = $1",
+    // Fetch credential IDs for this user. We return them as WebAuthn allowCredentials
+    // so the browser only offers passkeys enrolled for this account.
+    let credential_rows = match sqlx::query_as::<_, (Vec<u8>,)>(
+        "SELECT credential_id FROM webauthn_credentials WHERE user_id = $1",
     )
     .bind(&user_id)
-    .fetch_one(&state.db_pool)
-    .await;
+    .fetch_all(&state.db_pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to fetch user credentials: {}", e)})),
+            )
+                .into_response()
+        }
+    };
 
-    if matches!(has_credentials, Ok(count) if count == 0) {
+    if credential_rows.is_empty() {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "User has no passkey credentials"})),
         )
             .into_response();
     }
+
+    let allow_credentials: Vec<serde_json::Value> = credential_rows
+        .into_iter()
+        .map(|(credential_id,)| {
+            json!({
+                "type": "public-key",
+                "id": base64::engine::general_purpose::STANDARD.encode(credential_id)
+            })
+        })
+        .collect();
 
     // Generate authentication challenge
     match webauthn::generate_authentication_challenge(&state.db_pool).await {
@@ -600,7 +621,8 @@ async fn passkey_authenticate_begin_handler(
                 StatusCode::OK,
                 Json(json!({
                     "challenge": challenge_b64,
-                    "challenge_id": challenge_id
+                    "challenge_id": challenge_id,
+                    "allow_credentials": allow_credentials
                 })),
             )
                 .into_response()
@@ -631,14 +653,25 @@ async fn passkey_authenticate_verify_handler(
             // For MVP, we'll do basic validation and require proper signature verification
             let credential_id_bytes = match base64::engine::general_purpose::STANDARD.decode(&req.credential_id) {
                 Ok(b) => b,
-                Err(_) => {
+                Err(_) => match base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(&req.credential_id) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({"error": "Invalid credential_id encoding"})),
+                        )
+                            .into_response()
+                    }
+                },
+            };
+
+            if credential_id_bytes.is_empty() {
                     return (
                         StatusCode::BAD_REQUEST,
                         Json(json!({"error": "Invalid credential_id encoding"})),
                     )
                         .into_response()
-                }
-            };
+            }
             
             // Log the credential_id being searched (for debugging)
             let cred_id_hex = hex::encode(&credential_id_bytes);
@@ -649,7 +682,7 @@ async fn passkey_authenticate_verify_handler(
             let cred_result = sqlx::query_as::<_, (String, String)>(
                 "SELECT user_id, sign_count FROM webauthn_credentials WHERE credential_id = $1",
             )
-            .bind(&credential_id_bytes.as_slice())
+            .bind(&credential_id_bytes)
             .fetch_one(&state.db_pool)
             .await;
 

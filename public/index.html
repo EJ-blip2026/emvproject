@@ -1222,12 +1222,22 @@
                     return;
                 }
 
+                const allowCredentials = Array.isArray(beginData.allow_credentials)
+                    ? beginData.allow_credentials
+                        .filter(c => c && c.type === 'public-key' && c.id)
+                        .map(c => ({
+                            type: 'public-key',
+                            id: Uint8Array.from(atob(c.id), ch => ch.charCodeAt(0))
+                        }))
+                    : [];
+
                 // Step 2: Prompt user for passkey
                 showMessage('authMessage', 'Please use your passkey to authenticate...', 'success');
                 
                 const credential = await navigator.credentials.get({
                     publicKey: {
                         challenge: Uint8Array.from(atob(beginData.challenge), c => c.charCodeAt(0)),
+                        allowCredentials,
                         timeout: 60000,
                         userVerification: 'preferred'
                     }
