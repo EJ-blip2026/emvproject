@@ -506,6 +506,11 @@ async fn passkey_register_verify_handler(
     };
 
     // Step 10: Store the verified credential
+    // Log the credential_id being stored (for debugging)
+    let cred_id_hex = hex::encode(&credential_id_bytes);
+    eprintln!("[ENROLLMENT] Storing credential_id (hex): {}", cred_id_hex);
+    eprintln!("[ENROLLMENT] Credential ID length: {} bytes", credential_id_bytes.len());
+    
     match webauthn::store_credential(
         &state.db_pool,
         &user_id,
@@ -634,6 +639,11 @@ async fn passkey_authenticate_verify_handler(
                         .into_response()
                 }
             };
+            
+            // Log the credential_id being searched (for debugging)
+            let cred_id_hex = hex::encode(&credential_id_bytes);
+            eprintln!("[LOGIN] Looking for credential_id (hex): {}", cred_id_hex);
+            eprintln!("[LOGIN] Credential ID length: {} bytes", credential_id_bytes.len());
 
             // Fetch the user and credential
             let cred_result = sqlx::query_as::<_, (String, String)>(
@@ -648,8 +658,9 @@ async fn passkey_authenticate_verify_handler(
                 Err(e) => {
                     // Log the credential_id for debugging
                     let cred_id_hex = hex::encode(&credential_id_bytes);
-                    eprintln!("Credential lookup failed for credential_id (hex): {}", cred_id_hex);
-                    eprintln!("Error: {:?}", e);
+                    eprintln!("[LOGIN] Credential lookup FAILED");
+                    eprintln!("[LOGIN] Searched for credential_id (hex): {}", cred_id_hex);
+                    eprintln!("[LOGIN] Database error: {:?}", e);
                     return (
                         StatusCode::UNAUTHORIZED,
                         Json(json!({"error": format!("Credential not found (tried: {})", cred_id_hex[..16.min(cred_id_hex.len())].to_string())})),
