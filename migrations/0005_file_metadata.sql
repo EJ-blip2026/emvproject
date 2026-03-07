@@ -1,3 +1,2 @@
--- Add optional metadata for uploaded/imported files so downloads preserve name/type
-ALTER TABLE vault_entries ADD COLUMN IF NOT EXISTS file_name TEXT;
-ALTER TABLE vault_entries ADD COLUMN IF NOT EXISTS mime_type TEXT;
+-- Migration 5: Placeholder - replaced by migration 0007 
+-- This file kept empty to maintain migration history integrity
