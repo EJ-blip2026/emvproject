@@ -1,5 +1,4 @@
--- Add file metadata columns - complete solution for vault file tracking
--- IF NOT EXISTS supported in both PostgreSQL 9.6+ and SQLite 3.35.0+
-
-ALTER TABLE vault_entries ADD COLUMN IF NOT EXISTS file_name TEXT;
-ALTER TABLE vault_entries ADD COLUMN IF NOT EXISTS mime_type TEXT;
+-- Placeholder migration - actual schema updates moved to 0008 for compatibility
+-- Migration 0007 originally failed on older SQLite due to IF NOT EXISTS syntax
+-- See 0008_file_metadata_universal_compat.sql for the working implementation
+-- This marker ensures migration history stays consistent
