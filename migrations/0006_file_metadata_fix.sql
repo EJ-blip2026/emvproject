@@ -1,4 +1,2 @@
--- NOTE: This migration is intentionally empty to serve as a placeholder
--- Migration 0005 had checksum validation issues requiring database reset
--- The file_name and mime_type columns should already exist in vault_entries from 0005
--- This migration (0006) ensures migration version continuity
+-- Placeholder - file metadata columns are created in 0005
+

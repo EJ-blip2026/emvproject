@@ -1,4 +1,2 @@
--- Placeholder migration - actual schema updates moved to 0008 for compatibility
--- Migration 0007 originally failed on older SQLite due to IF NOT EXISTS syntax
--- See 0008_file_metadata_universal_compat.sql for the working implementation
--- This marker ensures migration history stays consistent
+-- Placeholder - schema updates completed in 0005
+

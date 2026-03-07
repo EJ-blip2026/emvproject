@@ -1,2 +1,3 @@
--- Migration 5: Placeholder - replaced by migration 0007 
--- This file kept empty to maintain migration history integrity
+-- Add file metadata columns for vault file tracking
+ALTER TABLE vault_entries ADD COLUMN file_name TEXT;
+ALTER TABLE vault_entries ADD COLUMN mime_type TEXT;
