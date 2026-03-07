@@ -613,8 +613,8 @@ async fn passkey_authenticate_begin_handler(
         })
         .collect();
 
-    // Generate authentication challenge
-    match webauthn::generate_authentication_challenge(&state.db_pool).await {
+    // Generate authentication challenge bound to this user
+    match webauthn::generate_authentication_challenge(&state.db_pool, &user_id).await {
         Ok((challenge_bytes, challenge_id)) => {
             let challenge_b64 = base64::engine::general_purpose::STANDARD.encode(&challenge_bytes);
             (
@@ -640,9 +640,9 @@ async fn passkey_authenticate_verify_handler(
     headers: HeaderMap,
     Json(req): Json<PasskeyAuthenticateVerifyRequest>,
 ) -> impl IntoResponse {
-    // Verify the challenge exists
+    // Verify the challenge exists and retrieve the user it was issued for
     match webauthn::verify_authentication_challenge(&state.db_pool, &req.challenge_id).await {
-        Ok(_) => {
+        Ok((_challenge_bytes, challenge_user_id)) => {
             // In a production system, you would:
             // 1. Decode authenticatorData, clientDataJSON, and signature
             // 2. Verify the signature against the stored public key
@@ -678,26 +678,62 @@ async fn passkey_authenticate_verify_handler(
             eprintln!("[LOGIN] Looking for credential_id (hex): {}", cred_id_hex);
             eprintln!("[LOGIN] Credential ID length: {} bytes", credential_id_bytes.len());
 
-            // Fetch the credential owner. We only need user_id here.
-            let cred_result = sqlx::query_as::<_, (String,)>(
-                "SELECT user_id FROM webauthn_credentials WHERE credential_id = $1",
-            )
-            .bind(&credential_id_bytes)
-            .fetch_one(&state.db_pool)
-            .await;
+            // Fetch the credential owner. If challenge was issued for a known user,
+            // require both user_id and credential_id to match.
+            let cred_result = if let Some(ch_uid) = challenge_user_id.as_deref() {
+                sqlx::query_as::<_, (String,)>(
+                    "SELECT user_id FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2",
+                )
+                .bind(ch_uid)
+                .bind(&credential_id_bytes)
+                .fetch_one(&state.db_pool)
+                .await
+            } else {
+                sqlx::query_as::<_, (String,)>(
+                    "SELECT user_id FROM webauthn_credentials WHERE credential_id = $1",
+                )
+                .bind(&credential_id_bytes)
+                .fetch_one(&state.db_pool)
+                .await
+            };
 
             let (user_id,) = match cred_result {
                 Ok(c) => c,
                 Err(e) => {
-                    // Log the credential_id for debugging
+                    // Log credential diagnostics
                     let cred_id_hex = hex::encode(&credential_id_bytes);
                     eprintln!("[LOGIN] Credential lookup FAILED");
                     eprintln!("[LOGIN] Searched for credential_id (hex): {}", cred_id_hex);
+                    eprintln!("[LOGIN] Challenge bound user_id: {:?}", challenge_user_id);
                     eprintln!("[LOGIN] Database error: {:?}", e);
 
                     let is_not_found = matches!(e, sqlx::Error::RowNotFound);
                     let err_msg = if is_not_found {
-                        format!("Credential not found (tried: {})", cred_id_hex[..16.min(cred_id_hex.len())].to_string())
+                        if let Some(ch_uid) = challenge_user_id.as_deref() {
+                            let expected = sqlx::query_as::<_, (Vec<u8>,)>(
+                                "SELECT credential_id FROM webauthn_credentials WHERE user_id = $1",
+                            )
+                            .bind(ch_uid)
+                            .fetch_all(&state.db_pool)
+                            .await
+                            .unwrap_or_default();
+
+                            let prefixes: Vec<String> = expected
+                                .into_iter()
+                                .map(|(b,)| {
+                                    let h = hex::encode(b);
+                                    h[..16.min(h.len())].to_string()
+                                })
+                                .collect();
+
+                            format!(
+                                "Credential not found (tried: {}, expected one of: {:?})",
+                                cred_id_hex[..16.min(cred_id_hex.len())].to_string(),
+                                prefixes
+                            )
+                        } else {
+                            format!("Credential not found (tried: {})", cred_id_hex[..16.min(cred_id_hex.len())].to_string())
+                        }
                     } else {
                         "Credential lookup failed due to database decode/query error".to_string()
                     };
@@ -1215,6 +1251,107 @@ async fn health_handler() -> impl IntoResponse {
     (
         StatusCode::OK,
         Json(json!({"status": "ok", "service": "vault-api"})),
+    )
+        .into_response()
+}
+
+async fn stats_handler(State(state): State<AppState>) -> impl IntoResponse {
+    // Get total users count
+    let total_users = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db_pool)
+        .await
+        .unwrap_or(0);
+
+    // Get total vaults
+    let total_vaults = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM vaults")
+        .fetch_one(&state.db_pool)
+        .await
+        .unwrap_or(0);
+
+    // Get total entries (notes + files)
+    let total_entries = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM vault_entries")
+        .fetch_one(&state.db_pool)
+        .await
+        .unwrap_or(0);
+
+    // Get recent registrations (last 24h)
+    let now = Utc::now();
+    let yesterday = (now - chrono::Duration::hours(24)).to_rfc3339();
+    let recent_registrations = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM users WHERE created_at > $1"
+    )
+    .bind(&yesterday)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+    // Get recent activity from audit logs
+    let recent_logins = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM audit_logs WHERE action IN ('login_success', 'passkey_login_success') AND created_at > $1"
+    )
+    .bind(&yesterday)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+    let recent_notes = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM audit_logs WHERE action = 'note_created' AND created_at > $1"
+    )
+    .bind(&yesterday)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+    let recent_files = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM audit_logs WHERE action = 'file_uploaded' AND created_at > $1"
+    )
+    .bind(&yesterday)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+    let recent_passkey_enrollments = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM audit_logs WHERE action = 'passkey_enrolled' AND created_at > $1"
+    )
+    .bind(&yesterday)
+    .fetch_one(&state.db_pool)
+    .await
+    .unwrap_or(0);
+
+    // Get last 10 actions
+    let recent_actions = sqlx::query_as::<_, (String, String, Option<String>)>(
+        "SELECT action, created_at, ip_address FROM audit_logs ORDER BY created_at DESC LIMIT 10"
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .unwrap_or_default();
+
+    let actions_list: Vec<serde_json::Value> = recent_actions
+        .into_iter()
+        .map(|(action, created_at, ip)| {
+            json!({
+                "action": action,
+                "timestamp": created_at,
+                "ip": ip.unwrap_or_else(|| "unknown".to_string())
+            })
+        })
+        .collect();
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "total_users": total_users,
+            "total_vaults": total_vaults,
+            "total_entries": total_entries,
+            "last_24h": {
+                "new_registrations": recent_registrations,
+                "logins": recent_logins,
+                "notes_created": recent_notes,
+                "files_uploaded": recent_files,
+                "passkeys_enrolled": recent_passkey_enrollments
+            },
+            "recent_activity": actions_list
+        })),
     )
         .into_response()
 }
@@ -1882,6 +2019,7 @@ async fn main() {
     let app = Router::new()
         // Health check (must come before static files)
         .route("/health", get(health_handler))
+        .route("/stats", get(stats_handler))
         .route("/gamma", get(gamma_landing_handler))
         // Auth API
         .route("/auth/register", post(register_handler))
