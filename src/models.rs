@@ -134,6 +134,8 @@ pub struct UploadFileRequest {
     pub encrypted_content: String, // Base64-encoded
     pub nonce: String,
     pub file_size_bytes: i32,
+    pub file_name: Option<String>,
+    pub mime_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -158,6 +160,8 @@ pub struct VaultEntryResponse {
     pub encrypted_content: String, // Base64
     pub nonce: String,
     pub file_size_bytes: Option<i32>,
+    pub file_name: Option<String>,
+    pub mime_type: Option<String>,
     pub created_at: String,
 }
 
