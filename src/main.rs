@@ -614,7 +614,7 @@ async fn passkey_authenticate_begin_handler(
         .collect();
 
     // Generate authentication challenge bound to this user
-    match webauthn::generate_authentication_challenge(&state.db_pool, &user_id).await {
+    match webauthn::generate_authentication_challenge(&state.db_pool).await {
         Ok((challenge_bytes, challenge_id)) => {
             let challenge_b64 = base64::engine::general_purpose::STANDARD.encode(&challenge_bytes);
             (
@@ -642,7 +642,7 @@ async fn passkey_authenticate_verify_handler(
 ) -> impl IntoResponse {
     // Verify the challenge exists and retrieve the user it was issued for
     match webauthn::verify_authentication_challenge(&state.db_pool, &req.challenge_id).await {
-        Ok((_challenge_bytes, challenge_user_id)) => {
+        Ok(_challenge_bytes) => {
             // In a production system, you would:
             // 1. Decode authenticatorData, clientDataJSON, and signature
             // 2. Verify the signature against the stored public key
@@ -680,22 +680,13 @@ async fn passkey_authenticate_verify_handler(
 
             // Fetch the credential owner. If challenge was issued for a known user,
             // require both user_id and credential_id to match.
-            let cred_result = if let Some(ch_uid) = challenge_user_id.as_deref() {
-                sqlx::query_as::<_, (String,)>(
-                    "SELECT user_id FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2",
-                )
-                .bind(ch_uid)
-                .bind(&credential_id_bytes)
-                .fetch_one(&state.db_pool)
-                .await
-            } else {
-                sqlx::query_as::<_, (String,)>(
-                    "SELECT user_id FROM webauthn_credentials WHERE credential_id = $1",
-                )
-                .bind(&credential_id_bytes)
-                .fetch_one(&state.db_pool)
-                .await
-            };
+            // Fetch the credential owner by credential_id only
+            let cred_result = sqlx::query_as::<_, (String,)>(
+                "SELECT user_id FROM webauthn_credentials WHERE credential_id = $1",
+            )
+            .bind(&credential_id_bytes)
+            .fetch_one(&state.db_pool)
+            .await;
 
             let (user_id,) = match cred_result {
                 Ok(c) => c,
@@ -704,36 +695,11 @@ async fn passkey_authenticate_verify_handler(
                     let cred_id_hex = hex::encode(&credential_id_bytes);
                     eprintln!("[LOGIN] Credential lookup FAILED");
                     eprintln!("[LOGIN] Searched for credential_id (hex): {}", cred_id_hex);
-                    eprintln!("[LOGIN] Challenge bound user_id: {:?}", challenge_user_id);
                     eprintln!("[LOGIN] Database error: {:?}", e);
 
                     let is_not_found = matches!(e, sqlx::Error::RowNotFound);
                     let err_msg = if is_not_found {
-                        if let Some(ch_uid) = challenge_user_id.as_deref() {
-                            let expected = sqlx::query_as::<_, (Vec<u8>,)>(
-                                "SELECT credential_id FROM webauthn_credentials WHERE user_id = $1",
-                            )
-                            .bind(ch_uid)
-                            .fetch_all(&state.db_pool)
-                            .await
-                            .unwrap_or_default();
-
-                            let prefixes: Vec<String> = expected
-                                .into_iter()
-                                .map(|(b,)| {
-                                    let h = hex::encode(b);
-                                    h[..16.min(h.len())].to_string()
-                                })
-                                .collect();
-
-                            format!(
-                                "Credential not found (tried: {}, expected one of: {:?})",
-                                cred_id_hex[..16.min(cred_id_hex.len())].to_string(),
-                                prefixes
-                            )
-                        } else {
-                            format!("Credential not found (tried: {})", cred_id_hex[..16.min(cred_id_hex.len())].to_string())
-                        }
+                        format!("Credential not found (tried: {})", cred_id_hex[..16.min(cred_id_hex.len())].to_string())
                     } else {
                         "Credential lookup failed due to database decode/query error".to_string()
                     };
