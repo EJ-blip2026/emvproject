@@ -1,3 +1,3 @@
--- Add file metadata columns for vault file tracking
-ALTER TABLE vault_entries ADD COLUMN file_name TEXT;
-ALTER TABLE vault_entries ADD COLUMN mime_type TEXT;
+-- Add optional metadata for uploaded/imported files so downloads preserve name/type
+ALTER TABLE vault_entries ADD COLUMN IF NOT EXISTS file_name TEXT;
+ALTER TABLE vault_entries ADD COLUMN IF NOT EXISTS mime_type TEXT;
