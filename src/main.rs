@@ -1090,6 +1090,7 @@ async fn upload_file_handler(
             let entry_id = Uuid::new_v4().to_string();
             let now = Utc::now().to_rfc3339();
 
+            // Try new schema with file_name and mime_type
             let insert_res = sqlx::query(
                  "INSERT INTO vault_entries (id, vault_id, entry_type, encrypted_content, nonce, file_size_bytes, file_name, mime_type, created_at, updated_at) \
                   VALUES ($1, $2, 'file', $3, $4, $5, $6, $7, $8, $8)"
@@ -1099,13 +1100,33 @@ async fn upload_file_handler(
             .bind(&encrypted_content)
             .bind(&req.nonce)
             .bind(req.file_size_bytes)
-              .bind(&req.file_name)
-              .bind(&req.mime_type)
+            .bind(&req.file_name)
+            .bind(&req.mime_type)
             .bind(&now)
             .execute(&state.db_pool)
             .await;
 
-            match insert_res {
+            // Fallback to old schema if columns don't exist
+            let final_insert_res = match insert_res {
+                Ok(r) => Ok(r),
+                Err(_) => {
+                    // Try without file_name and mime_type columns
+                    sqlx::query(
+                        "INSERT INTO vault_entries (id, vault_id, entry_type, encrypted_content, nonce, file_size_bytes, created_at, updated_at) \
+                         VALUES ($1, $2, 'file', $3, $4, $5, $6, $6)"
+                    )
+                    .bind(&entry_id)
+                    .bind(&vault_id)
+                    .bind(&encrypted_content)
+                    .bind(&req.nonce)
+                    .bind(req.file_size_bytes)
+                    .bind(&now)
+                    .execute(&state.db_pool)
+                    .await
+                }
+            };
+
+            match final_insert_res {
                 Ok(_) => {
                     // Log file upload
                     let ip = extract_ip(&headers);
@@ -1178,6 +1199,7 @@ async fn list_entries_handler(
             .into_response();
     }
 
+    // Try with new columns first (file_name, mime_type)
     let entries_result = sqlx::query_as::<_, (String, String, Vec<u8>, String, Option<i32>, Option<String>, Option<String>, String)>(
         "SELECT id, entry_type, encrypted_content, nonce, file_size_bytes, file_name, mime_type, created_at FROM vault_entries WHERE vault_id = $1 ORDER BY created_at DESC"
     )
@@ -1185,32 +1207,60 @@ async fn list_entries_handler(
     .fetch_all(&state.db_pool)
     .await;
 
-    match entries_result {
-        Ok(entries) => {
-            let entry_list: Vec<VaultEntryResponse> = entries
-                .into_iter()
-                .map(|(id, entry_type, encrypted_content, nonce, file_size_bytes, file_name, mime_type, created_at)| {
-                    VaultEntryResponse {
-                        id,
-                        entry_type,
-                        encrypted_content: base64::engine::general_purpose::STANDARD
-                            .encode(&encrypted_content),
-                        nonce,
-                        file_size_bytes,
-                        file_name,
-                        mime_type,
-                        created_at,
-                    }
-                })
-                .collect();
-            (StatusCode::OK, Json(json!({"entries": entry_list}))).into_response()
+    // Fallback to old schema if new columns don't exist yet
+    let entries: Vec<VaultEntryResponse> = match entries_result {
+        Ok(entries) => entries
+            .into_iter()
+            .map(|(id, entry_type, encrypted_content, nonce, file_size_bytes, file_name, mime_type, created_at)| {
+                VaultEntryResponse {
+                    id,
+                    entry_type,
+                    encrypted_content: base64::engine::general_purpose::STANDARD.encode(&encrypted_content),
+                    nonce,
+                    file_size_bytes,
+                    file_name,
+                    mime_type,
+                    created_at,
+                }
+            })
+            .collect::<Vec<_>>(),
+        Err(_) => {
+            // Fallback: try without file_name and mime_type columns
+            let old_entries_result = sqlx::query_as::<_, (String, String, Vec<u8>, String, Option<i32>, String)>(
+                "SELECT id, entry_type, encrypted_content, nonce, file_size_bytes, created_at FROM vault_entries WHERE vault_id = $1 ORDER BY created_at DESC"
+            )
+            .bind(&vault_id)
+            .fetch_all(&state.db_pool)
+            .await;
+
+            match old_entries_result {
+                Ok(old_entries) => old_entries
+                    .into_iter()
+                    .map(|(id, entry_type, encrypted_content, nonce, file_size_bytes, created_at)| {
+                        VaultEntryResponse {
+                            id,
+                            entry_type,
+                            encrypted_content: base64::engine::general_purpose::STANDARD.encode(&encrypted_content),
+                            nonce,
+                            file_size_bytes,
+                            file_name: None,
+                            mime_type: None,
+                            created_at,
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("Failed to fetch entries: {}", e)})),
+                    )
+                        .into_response();
+                }
+            }
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Failed to fetch entries: {}", e)})),
-        )
-            .into_response(),
-    }
+    };
+
+    (StatusCode::OK, Json(json!({"entries": entries}))).into_response()
 }
 
 // ============================================================================
