@@ -772,6 +772,18 @@ async fn gamma_landing_handler() -> impl IntoResponse {
     Html(page)
 }
 
+async fn landing_handler() -> impl IntoResponse {
+    let page = fs::read_to_string("public/landing.html")
+        .unwrap_or_else(|_| "Landing page not found".to_string());
+    Html(page)
+}
+
+async fn app_handler() -> impl IntoResponse {
+    let page = fs::read_to_string("public/index.html")
+        .unwrap_or_else(|_| "Vault app not found".to_string());
+    Html(page)
+}
+
 fn load_certs(path: &str) -> Vec<Certificate> {
     let file = fs::File::open(path).expect("cannot open certificate file");
     let mut reader = BufReader::new(file);
@@ -2058,6 +2070,8 @@ async fn main() {
 
     let app = Router::new()
         // Health check (must come before static files)
+        .route("/", get(landing_handler))
+        .route("/app", get(app_handler))
         .route("/health", get(health_handler))
         .route("/stats", get(stats_handler))
         .route("/gamma", get(gamma_landing_handler))
