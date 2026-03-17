@@ -450,10 +450,50 @@
         width: 100%;
       }
     }
+
+    /* Product Hunt welcome banner */
+    .ph-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+      padding: 13px 18px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 100, 0, 0.45);
+      background: linear-gradient(135deg, rgba(255, 80, 0, 0.14), rgba(255, 140, 30, 0.1));
+      color: #ffd5b0;
+      font-size: 14px;
+      font-weight: 600;
+      animation: rise 0.6s ease;
+    }
+    .ph-banner.visible { display: flex; }
+    .ph-banner a {
+      color: #ffb580;
+      text-decoration: none;
+      border: 1px solid rgba(255,120,40,0.5);
+      border-radius: 8px;
+      padding: 6px 12px;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .ph-banner a:hover { background: rgba(255,100,0,0.18); }
+    .ph-badge {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
   </style>
 </head>
 <body>
   <div class="shell">
+    <!-- Product Hunt welcome banner (shown only for ?ref=producthunt visitors) -->
+    <div class="ph-banner" id="ph-banner" role="alert">
+      <span>👋 Welcome from Product Hunt! Try the live app free — no install needed.</span>
+      <a href="/app">Try it now →</a>
+    </div>
+
     <header class="nav">
       <div class="brand">
         <span class="brand-dot" aria-hidden="true"></span>
@@ -476,8 +516,14 @@
         </p>
 
         <div class="hero-ctas">
-          <a class="button primary" href="/app">Try the Live App</a>
-          <a class="button secondary" href="https://www.producthunt.com/search/posts?q=Zero-Knowledge%20Vault" target="_blank" rel="noopener noreferrer">Find us on Product Hunt</a>
+          <a class="button primary" href="/app">Try the Live App — Free</a>
+          <a class="button secondary" id="ph-cta" href="https://www.producthunt.com/search/posts?q=Zero-Knowledge+Vault" target="_blank" rel="noopener noreferrer">⬆️ Upvote on Product Hunt</a>
+        </div>
+
+        <div class="ph-badge" id="ph-badge-wrap" style="display:none">
+          <a href="https://www.producthunt.com/search/posts?q=Zero-Knowledge+Vault" target="_blank" rel="noopener noreferrer">
+            <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=zero-knowledge-vault&theme=dark" alt="Zero-Knowledge Vault on Product Hunt" width="250" height="54" loading="lazy">
+          </a>
         </div>
 
         <div class="chips" aria-label="Capability highlights">
@@ -564,5 +610,19 @@
       </span>
     </footer>
   </div>
+
+<script>
+  // Show Product Hunt banner and badge for PH referral visitors
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var ref = params.get('ref') || document.referrer;
+    if (ref === 'producthunt' || ref.indexOf('producthunt.com') !== -1) {
+      var banner = document.getElementById('ph-banner');
+      if (banner) banner.classList.add('visible');
+      var badge = document.getElementById('ph-badge-wrap');
+      if (badge) badge.style.display = 'flex';
+    }
+  })();
+</script>
 </body>
 </html>
