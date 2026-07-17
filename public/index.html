@@ -663,12 +663,17 @@
                 const data = await response.json();
                 console.log('Response data:', data);
                 
-                if (response.ok) {
-                    showMessage('authMessage', `Account created on ${subscription_tier} plan! Please login.`, 'success');
-                    showAuthTab('login');
-                } else {
-                    showMessage('authMessage', data.error || 'Registration failed', 'error');
-                }
+              if (response.ok) {
+    // If your Rust backend returns a Stripe checkout URL, send them straight there!
+    if (data.checkout_url || data.url) {
+        showMessage('authMessage', 'Redirecting to Stripe secure payment gateway...', 'success');
+        window.location.href = data.checkout_url || data.url;
+    } else {
+        // Fallback if no payment URL is provided by the server
+        showMessage('authMessage', `Account created on ${subscription_tier} plan! Please login.`, 'success');
+        showAuthTab('login');
+    }
+}
             } catch (err) {
                 console.error('Registration error:', err);
                 showMessage('authMessage', 'Network error: ' + err.message, 'error');
