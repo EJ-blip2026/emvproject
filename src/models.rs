@@ -167,7 +167,7 @@ pub struct VaultEntryResponse {
 
 #[derive(Debug, Serialize)]
 pub struct UsageResponse {
-    pub storage_used_gb: f64,
+    pub storage_used_gb: f32,
     pub storage_limit_gb: i32,
     pub subscription_tier: String,
     pub vault_count: i32,
