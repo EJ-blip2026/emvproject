@@ -40,7 +40,7 @@ pub struct User {
     pub encryption_key_salt: String,
     pub subscription_tier: String,
     pub storage_limit_gb: i32,
-    pub storage_used_gb: f64,
+    pub storage_used_gb: f32,
     pub created_at: String,
 }
 
