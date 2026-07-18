@@ -1492,7 +1492,7 @@ async fn get_usage_handler(State(state): State<AppState>, headers: HeaderMap) ->
         }
     };
 
-    let usage = sqlx::query_as::<_, (f64, i32, String)>(
+    let usage = sqlx::query_as::<_, (f32, i32, String)>(
         "SELECT storage_used_gb, storage_limit_gb, subscription_tier FROM users WHERE id = $1"
     )
     .bind(&user_id)
@@ -1510,7 +1510,7 @@ async fn get_usage_handler(State(state): State<AppState>, headers: HeaderMap) ->
         }
     };
 
-    let vault_count = sqlx::query_scalar::<_, i64>(
+    let vault_count = sqlx::query_scalar::<_, i32>(
         "SELECT COUNT(*) FROM vaults WHERE user_id = $1"
     )
     .bind(&user_id)
@@ -1518,7 +1518,7 @@ async fn get_usage_handler(State(state): State<AppState>, headers: HeaderMap) ->
     .await
     .unwrap_or(0);
 
-    let entry_count = sqlx::query_scalar::<_, i64>(
+    let entry_count = sqlx::query_scalar::<_, i32>(
         "SELECT COUNT(*) FROM vault_entries WHERE vault_id IN (SELECT id FROM vaults WHERE user_id = $1)"
     )
     .bind(&user_id)
