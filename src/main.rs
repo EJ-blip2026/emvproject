@@ -91,6 +91,7 @@ async fn register_handler(
         .as_ref()
         .map(|t| t.as_str())
         .unwrap_or(models::TIER_STARTER);
+    eprintln!("DEBUG: Received subscription tier: {:?}", req.subscription_tier);
     
     // Validate tier
     let tier = match tier {
