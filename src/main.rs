@@ -122,7 +122,7 @@ async fn register_handler(
             let checkout_url = if tier == models::TIER_ENTERPRISE {
                 "https://buy.stripe.com/7sYbJ0byrbQAcF12oU1gs01"
             } else {
-                "https://buy.stripe.com/3cI6oG9qj9Is6gD7Je1gs00"
+                "https://buy.stripe.com/7sYbJ0byrbQAcF12oU1gs01"
             };
             // Return the data WITH the checkout_url
             (StatusCode::CREATED, Json(json!({"user_id": user_id, "message": "User created", "checkout_url": checkout_url}))).into_response()
