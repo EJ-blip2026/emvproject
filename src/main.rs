@@ -94,10 +94,11 @@ async fn register_handler(
     eprintln!("DEBUG: Received subscription tier: {:?}", req.subscription_tier);
     
     // Validate tier
-    let tier = match tier {
-        models::TIER_PRO | models::TIER_ENTERPRISE => tier,
-        _ => models::TIER_STARTER,
-    };
+   // Validate tier
+let tier = match tier {
+    models::TIER_PRO | models::TIER_ENTERPRISE | "Free" => tier, // Add "Free" here
+    _ => models::TIER_STARTER,
+};
     
     let storage_limit = models::get_storage_limit(tier);
 
@@ -123,9 +124,9 @@ if tier == models::TIER_PRO || tier == models::TIER_ENTERPRISE || tier == models
     
     // 2. Map each tier to its specific Stripe URL
     let checkout_url = match tier {
-        models::TIER_ENTERPRISE => "https://buy.stripe.com/YOUR_ENTERPRISE_LINK",
-        models::TIER_PRO => "https://buy.stripe.com/YOUR_PRO_LINK",
-        models::TIER_STARTER => "https://buy.stripe.com/YOUR_STARTER_LINK",
+        models::TIER_ENTERPRISE => "https://buy.stripe.com/7sYbJ0byrbQAcF12oU1gs01",
+        models::TIER_PRO => "https://buy.stripe.com/3cI6oG9qj9Is6gD7Je1gs00",
+        models::TIER_STARTER => "https://buy.stripe.com/6oU28qcCv5sc7kH0gM1gs02",
         _ => "https://buy.stripe.com/FALLBACK_LINK" 
     };
 
