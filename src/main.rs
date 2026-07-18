@@ -1527,7 +1527,7 @@ async fn get_usage_handler(State(state): State<AppState>, headers: HeaderMap) ->
     .unwrap_or(0);
 
     let resp = UsageResponse {
-        storage_used_gb,
+        storage_used_gb: storage_used_gb as f32,
         storage_limit_gb,
         subscription_tier,
         vault_count: vault_count as i32,
