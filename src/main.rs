@@ -118,18 +118,23 @@ async fn register_handler(
 
    match result {
     Ok(_) => {
-        if tier == models::TIER_PRO || tier == models::TIER_ENTERPRISE {
-            let checkout_url = if tier == models::TIER_ENTERPRISE {
-                "https://buy.stripe.com/7sYbJ0byrbQAcF12oU1gs01"
-            } else {
-                "https://buy.stripe.com/7sYbJ0byrbQAcF12oU1gs01"
-            };
-            // Return the data WITH the checkout_url
-            (StatusCode::CREATED, Json(json!({"user_id": user_id, "message": "User created", "checkout_url": checkout_url}))).into_response()
-        } else {
-            // Return standard response for free tier
-            (StatusCode::CREATED, Json(json!({"user_id": user_id, "message": "User created"}))).into_response()
-        }
+       // 1. Update the condition to include TIER_STARTER
+if tier == models::TIER_PRO || tier == models::TIER_ENTERPRISE || tier == models::TIER_STARTER {
+    
+    // 2. Map each tier to its specific Stripe URL
+    let checkout_url = match tier {
+        models::TIER_ENTERPRISE => "https://buy.stripe.com/YOUR_ENTERPRISE_LINK",
+        models::TIER_PRO => "https://buy.stripe.com/YOUR_PRO_LINK",
+        models::TIER_STARTER => "https://buy.stripe.com/YOUR_STARTER_LINK",
+        _ => "https://buy.stripe.com/FALLBACK_LINK" 
+    };
+
+    (StatusCode::CREATED, Json(json!({"user_id": user_id, "message": "User created", "checkout_url": checkout_url}))).into_response()
+
+} else {
+    // 3. This block now handles only the "Free" / "Try Free" tier (No redirect)
+    (StatusCode::CREATED, Json(json!({"user_id": user_id, "message": "Free account created"}))).into_response()
+}
     },
     Err(e) => (StatusCode::BAD_REQUEST, Json(json!({"error": format!("Registration failed: {}", e)})), ).into_response(),
 
