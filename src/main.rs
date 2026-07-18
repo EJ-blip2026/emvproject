@@ -978,7 +978,7 @@ async fn create_note_handler(
         };
 
         // Enforce storage quota: reserve then insert, with compensation on failure
-        let size_bytes = encrypted_content.len() as f64;
+        let size_bytes = encrypted_content.len() as f32;
         let additional_gb = size_bytes / (1024.0 * 1024.0 * 1024.0);
 
         let reserve = sqlx::query(
@@ -1092,7 +1092,7 @@ async fn upload_file_handler(
     };
 
     // Enforce storage quota: reserve then insert, with compensation on failure
-    let size_bytes = encrypted_content.len() as f64;
+    let size_bytes = encrypted_content.len() as f32;
     let additional_gb = size_bytes / (1024.0 * 1024.0 * 1024.0);
 
     let reserve = sqlx::query(
@@ -1747,7 +1747,7 @@ async fn import_cloud_files_handler(
                     .encode(uuid::Uuid::new_v4().to_string());
 
                 // Check quota and insert
-                let size_bytes = bytes.len() as f64;
+                let size_bytes = bytes.len() as f32;
                 let additional_gb = size_bytes / (1024.0 * 1024.0 * 1024.0);
 
                 let reserve = sqlx::query(
