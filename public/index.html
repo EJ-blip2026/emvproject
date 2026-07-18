@@ -657,6 +657,11 @@
             }
 
             console.log('Registering user:', username, 'at', API_URL);
+            console.log("DEBUG: Sending subscription tier to backend:", subscription_tier);
+
+try {
+    const response = await fetch(`${API_URL}/auth/register`, 
+                                 {
             
             try {
                 const response = await fetch(`${API_URL}/auth/register`, {
