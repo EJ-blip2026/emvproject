@@ -120,13 +120,12 @@ let tier = match tier {
    match result {
     Ok(_) => {
        // 1. Update the condition to include TIER_STARTER
-if tier == models::TIER_PRO || tier == models::TIER_ENTERPRISE || tier == models::TIER_STARTER {
+if tier == models::TIER_PRO || tier == models::TIER_STARTER {
     
     // 2. Map each tier to its specific Stripe URL
     let checkout_url = match tier {
-        models::TIER_ENTERPRISE => "https://buy.stripe.com/7sYbJ0byrbQAcF12oU1gs01",
-        models::TIER_PRO => "https://buy.stripe.com/3cI6oG9qj9Is6gD7Je1gs00",
-        models::TIER_STARTER => "https://buy.stripe.com/6oU28qcCv5sc7kH0gM1gs02",
+        models::TIER_PRO => "https://buy.stripe.com/7sYbJ0byrbQAcF12oU1gs01",
+        models::TIER_STARTER => "https://buy.stripe.com/3cI6oG9qj9Is6gD7Je1gs00",
         _ => "https://buy.stripe.com/FALLBACK_LINK" 
     };
 
